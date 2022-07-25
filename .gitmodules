@@ -1,0 +1,3 @@
+[submodule "btree_tests/ParallelTools"]
+	path = btree_tests/ParallelTools
+	url = git@github.com:wheatman/ParallelTools.git
