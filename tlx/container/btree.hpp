@@ -29,6 +29,7 @@
 
 #include <ParallelTools/parallel.h>
 #include <ParallelTools/reducer.h>
+#include <ParallelTools/Lock.hpp>
 
 namespace tlx {
 
@@ -243,7 +244,7 @@ private:
         //! Define an related allocator for the InnerNode structs.
         typedef typename std::allocator_traits<Allocator>::template rebind_alloc<InnerNode> alloc_type;
 
-        mutable std::shared_mutex mutex_;
+        mutable ReaderWriterLock mutex_;
 
         //! Keys of children or data pointers
         key_type slotkey[inner_slotmax]; // NOLINT
@@ -289,7 +290,7 @@ private:
         //! Double linked list pointers to traverse the leaves
         LeafNode* next_leaf;
 
-        mutable std::mutex mutex_;
+        mutable Lock mutex_;
 
         //! Array of (key, data) pairs
         value_type slotdata[leaf_slotmax]; // NOLINT
@@ -1093,7 +1094,7 @@ private:
     //! Pointer to the B+ tree's root node, either leaf or inner node.
     node* root_;
 
-    mutable std::shared_mutex mutex;
+    mutable ReaderWriterLock mutex;
 
     //! Pointer to first leaf in the double linked leaf chain.
     LeafNode* head_leaf_;
@@ -1895,15 +1896,18 @@ private:
     //! Returns true if the item was inserted
     template <bool optimism = true>
     std::pair<iterator, bool>
-    insert_start(const key_type& key, const value_type& value) {
+    insert_start(const key_type& key, const value_type& value, int cpu_id = -1) {
         if constexpr (concurrent) {
             if constexpr (optimism) {
+                if (cpu_id == -1) {
+                    cpu_id = sched_getcpu();
+                }
                 // printf("trying to lock the main lock in shared mode\n");
-                mutex.lock_shared();
+                mutex.read_lock(PF_WAIT_FOR_LOCK, cpu_id);
                 // printf("locked the main lock in shared mode\n");
             } else {
                 // printf("trying to lock the main lock in exclusive mode\n");
-                mutex.lock();
+                mutex.write_lock(PF_WAIT_FOR_LOCK);
                 // printf("locked the main lock in exclusive mode\n");
             }
         }
@@ -1915,21 +1919,21 @@ private:
             if constexpr (concurrent) {
                 if constexpr (optimism) {
                     // printf("unlocking the main lock in shared mode\n");
-                    mutex.unlock_shared();
-                    return insert_start<false>(key, value);
+                    mutex.read_unlock();
+                    return insert_start<false>(key, value, cpu_id);
                 }
             }
           root_ = head_leaf_ = tail_leaf_ = allocate_leaf();
         }
 
         std::tuple<iterator, bool, bool> r =
-            insert_descend<optimism>(root_, key, value, &newkey, &newchild, nullptr);
+            insert_descend<optimism>(root_, key, value, &newkey, &newchild, nullptr, cpu_id);
         if constexpr (concurrent) {
             if constexpr (optimism) {
                 if (std::get<2>(r)) {
                     // printf("unlocking the main lock in shared mode\n");
-                    mutex.unlock_shared();
-                    return insert_start<false>(key, value);
+                    mutex.read_unlock();
+                    return insert_start<false>(key, value, cpu_id);
                 }
             }
         }
@@ -1964,10 +1968,10 @@ private:
         if constexpr (concurrent) {
             if constexpr (optimism) {
                 // printf("unlocking the main lock in shared mode\n");
-                mutex.unlock_shared();
+                mutex.read_unlock();
             } else {
                 // printf("unlocking the main lock in exclusive mode\n");
-                mutex.unlock();
+                mutex.write_unlock();
             }
         }
         return {std::get<0>(r), std::get<1>(r)};
@@ -1983,7 +1987,7 @@ private:
     template<bool optimism>
     std::tuple<iterator, bool, bool> insert_descend(
         node* n, const key_type& key, const value_type& value,
-        key_type* splitkey, node** splitnode, std::shared_mutex * parent_lock) {
+        key_type* splitkey, node** splitnode, ReaderWriterLock * parent_lock, int cpu_id) {
 
         if (!n->is_leafnode())
         {
@@ -1992,14 +1996,14 @@ private:
             if constexpr (concurrent) {
                 if constexpr (optimism) {
                     // printf("trying to lock a inner node lock %p in shared mode\n", inner);
-                    inner->mutex_.lock_shared();
+                    inner->mutex_.read_lock(PF_WAIT_FOR_LOCK, cpu_id);
                     if (parent_lock) {
-                        parent_lock->unlock_shared();
+                        parent_lock->read_unlock();
                     }
                     // printf("locked a inner node lock %p in shared mode\n", inner);
                 } else {
                     // printf("trying to lock a inner node lock %p in exclusive mode\n", inner);
-                    inner->mutex_.lock();
+                    inner->mutex_.write_lock(PF_WAIT_FOR_LOCK);
                     // printf("locked a inner node lock %p in exclusive mode\n", inner);
                 }
             }
@@ -2013,7 +2017,7 @@ private:
 
             std::tuple<iterator, bool, bool> r =
                 insert_descend<optimism>(inner->childid[slot],
-                               key, value, &newkey, &newchild, &inner->mutex_);
+                               key, value, &newkey, &newchild, &inner->mutex_, cpu_id);
 
             if (newchild)
             {
@@ -2064,7 +2068,7 @@ private:
                         *splitkey = newkey;
                         if (concurrent) {
                             // printf("unlocking exclusive node lock from %p\n", inner);
-                            inner->mutex_.unlock();
+                            inner->mutex_.write_unlock();
                         }
                         return r;
                     }
@@ -2099,7 +2103,7 @@ private:
                 if constexpr (!optimism)  {
                     // when we are optimistic we can unlock on the way down
                     // printf("unlocking exclusive node lock from %p\n", original_inner);
-                    original_inner->mutex_.unlock();
+                    original_inner->mutex_.write_unlock();
                 }
             }
             return r;
@@ -2113,7 +2117,7 @@ private:
                 leaf->mutex_.lock();
                 if constexpr (optimism) {
                     if (parent_lock) {
-                        parent_lock->unlock_shared();
+                        parent_lock->read_unlock();
                     }   
                 }
                 // printf("locked leaf lock from %p\n", leaf);
