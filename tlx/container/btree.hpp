@@ -93,7 +93,7 @@ struct btree_default_traits {
     //! Number of slots in each leaf of the tree. Estimated so that each node
     //! has a size of about 256 bytes.
     static const int leaf_slots =
-        TLX_BTREE_MAX(8, 256 / (sizeof(Value)));
+        TLX_BTREE_MAX(8, 1024 / (sizeof(Value)));
 
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
@@ -1927,12 +1927,12 @@ private:
         }
 
         std::tuple<iterator, bool, bool> r =
-            insert_descend<optimism>(root_, key, value, &newkey, &newchild, nullptr, cpu_id);
+            insert_descend<optimism>(root_, key, value, &newkey, &newchild, &mutex, cpu_id);
         if constexpr (concurrent) {
             if constexpr (optimism) {
                 if (std::get<2>(r)) {
                     // printf("unlocking the main lock in shared mode\n");
-                    mutex.read_unlock();
+                    // mutex.read_unlock();
                     return insert_start<false>(key, value, cpu_id);
                 }
             }
@@ -1968,7 +1968,7 @@ private:
         if constexpr (concurrent) {
             if constexpr (optimism) {
                 // printf("unlocking the main lock in shared mode\n");
-                mutex.read_unlock();
+                // mutex.read_unlock();
             } else {
                 // printf("unlocking the main lock in exclusive mode\n");
                 mutex.write_unlock();
