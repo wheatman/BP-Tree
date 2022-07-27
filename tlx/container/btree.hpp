@@ -93,7 +93,7 @@ struct btree_default_traits {
     //! Number of slots in each leaf of the tree. Estimated so that each node
     //! has a size of about 256 bytes.
     static const int leaf_slots =
-        TLX_BTREE_MAX(8, 1024 / (sizeof(Value)));
+        TLX_BTREE_MAX(8, 256 / (sizeof(Value)));
 
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
@@ -1925,9 +1925,10 @@ private:
             }
           root_ = head_leaf_ = tail_leaf_ = allocate_leaf();
         }
+        auto lock_p = &mutex;
 
         std::tuple<iterator, bool, bool> r =
-            insert_descend<optimism>(root_, key, value, &newkey, &newchild, &mutex, cpu_id);
+            insert_descend<optimism>(root_, key, value, &newkey, &newchild, &lock_p, cpu_id);
         if constexpr (concurrent) {
             if constexpr (optimism) {
                 if (std::get<2>(r)) {
@@ -1965,13 +1966,9 @@ private:
             verify();
             TLX_BTREE_ASSERT(exists(key));
         }
-        if constexpr (concurrent) {
-            if constexpr (optimism) {
-                // printf("unlocking the main lock in shared mode\n");
-                // mutex.read_unlock();
-            } else {
-                // printf("unlocking the main lock in exclusive mode\n");
-                mutex.write_unlock();
+        if constexpr (concurrent && !optimism) {
+            if (lock_p) {
+                lock_p->write_unlock();
             }
         }
         return {std::get<0>(r), std::get<1>(r)};
@@ -1987,7 +1984,7 @@ private:
     template<bool optimism>
     std::tuple<iterator, bool, bool> insert_descend(
         node* n, const key_type& key, const value_type& value,
-        key_type* splitkey, node** splitnode, ReaderWriterLock * parent_lock, int cpu_id) {
+        key_type* splitkey, node** splitnode, ReaderWriterLock ** parent_lock, int cpu_id) {
 
         if (!n->is_leafnode())
         {
@@ -1997,13 +1994,16 @@ private:
                 if constexpr (optimism) {
                     // printf("trying to lock a inner node lock %p in shared mode\n", inner);
                     inner->mutex_.read_lock(PF_WAIT_FOR_LOCK, cpu_id);
-                    if (parent_lock) {
-                        parent_lock->read_unlock();
-                    }
+                    (*parent_lock)->read_unlock();
+                    *parent_lock = nullptr;
                     // printf("locked a inner node lock %p in shared mode\n", inner);
                 } else {
                     // printf("trying to lock a inner node lock %p in exclusive mode\n", inner);
                     inner->mutex_.write_lock(PF_WAIT_FOR_LOCK);
+                    // if (inner->slotuse < inner_slotmax-1) {
+                    //     (*parent_lock)->write_unlock();
+                    //     *parent_lock = nullptr;
+                    // }
                     // printf("locked a inner node lock %p in exclusive mode\n", inner);
                 }
             }
@@ -2015,9 +2015,10 @@ private:
             TLX_BTREE_PRINT(
                 "BTree::insert_descend into " << inner->childid[slot]);
 
+            auto lock_p = &inner->mutex_;
             std::tuple<iterator, bool, bool> r =
                 insert_descend<optimism>(inner->childid[slot],
-                               key, value, &newkey, &newchild, &inner->mutex_, cpu_id);
+                               key, value, &newkey, &newchild, &lock_p, cpu_id);
 
             if (newchild)
             {
@@ -2116,9 +2117,8 @@ private:
                 // printf("trying to lock leaf lock from %p\n", leaf);
                 leaf->mutex_.lock();
                 if constexpr (optimism) {
-                    if (parent_lock) {
-                        parent_lock->read_unlock();
-                    }   
+                    (*parent_lock)->read_unlock();
+                    *parent_lock = nullptr;
                 }
                 // printf("locked leaf lock from %p\n", leaf);
             }
