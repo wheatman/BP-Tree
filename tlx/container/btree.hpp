@@ -1931,6 +1931,9 @@ private:
             insert_descend<optimism>(root_, key, value, &newkey, &newchild, &lock_p, cpu_id);
         if constexpr (concurrent) {
             if constexpr (optimism) {
+                if (lock_p) {
+                    lock_p->read_unlock();
+                }
                 if (std::get<2>(r)) {
                     // printf("unlocking the main lock in shared mode\n");
                     // mutex.read_unlock();
@@ -2019,6 +2022,22 @@ private:
             std::tuple<iterator, bool, bool> r =
                 insert_descend<optimism>(inner->childid[slot],
                                key, value, &newkey, &newchild, &lock_p, cpu_id);
+            if constexpr (concurrent && optimism) {
+              if (lock_p) {
+                if (inner->level == 1 && std::get<2>(r) && !inner->is_full()) {
+                  if (lock_p->try_upgrade_release_on_fail(cpu_id)) {
+                    r = insert_descend<false>(inner->childid[slot], key, value,
+                                              &newkey, &newchild, &lock_p,
+                                              cpu_id);
+                  } else {
+                    lock_p = nullptr;
+                  }
+                } else {
+                  lock_p->read_unlock();
+                  lock_p = nullptr;
+                }
+              }
+            }
 
             if (newchild)
             {
@@ -2101,7 +2120,7 @@ private:
                 inner->slotuse++;
             }
             if constexpr (concurrent) {
-                if constexpr (!optimism)  {
+                if  (lock_p)  {
                     // when we are optimistic we can unlock on the way down
                     // printf("unlocking exclusive node lock from %p\n", original_inner);
                     original_inner->mutex_.write_unlock();
@@ -2117,8 +2136,10 @@ private:
                 // printf("trying to lock leaf lock from %p\n", leaf);
                 leaf->mutex_.lock();
                 if constexpr (optimism) {
-                    (*parent_lock)->read_unlock();
-                    *parent_lock = nullptr;
+                    if (!leaf->is_full()) {
+                        (*parent_lock)->read_unlock();
+                        *parent_lock = nullptr;
+                    }
                 }
                 // printf("locked leaf lock from %p\n", leaf);
             }
