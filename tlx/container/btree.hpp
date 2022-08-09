@@ -1903,11 +1903,11 @@ private:
                     cpu_id = sched_getcpu();
                 }
                 // printf("trying to lock the main lock in shared mode\n");
-                mutex.read_lock(PF_WAIT_FOR_LOCK, cpu_id);
+                mutex.read_lock(cpu_id);
                 // printf("locked the main lock in shared mode\n");
             } else {
                 // printf("trying to lock the main lock in exclusive mode\n");
-                mutex.write_lock(PF_WAIT_FOR_LOCK);
+                mutex.write_lock();
                 // printf("locked the main lock in exclusive mode\n");
             }
         }
@@ -1919,7 +1919,7 @@ private:
             if constexpr (concurrent) {
                 if constexpr (optimism) {
                     // printf("unlocking the main lock in shared mode\n");
-                    mutex.read_unlock();
+                    mutex.read_unlock(cpu_id);
                     return insert_start<false>(key, value, cpu_id);
                 }
             }
@@ -1932,7 +1932,7 @@ private:
         if constexpr (concurrent) {
             if constexpr (optimism) {
                 if (lock_p) {
-                    lock_p->read_unlock();
+                    lock_p->read_unlock(cpu_id);
                 }
                 if (std::get<2>(r)) {
                     // printf("unlocking the main lock in shared mode\n");
@@ -1996,13 +1996,13 @@ private:
             if constexpr (concurrent) {
                 if constexpr (optimism) {
                     // printf("trying to lock a inner node lock %p in shared mode\n", inner);
-                    inner->mutex_.read_lock(PF_WAIT_FOR_LOCK, cpu_id);
-                    (*parent_lock)->read_unlock();
+                    inner->mutex_.read_lock(cpu_id);
+                    (*parent_lock)->read_unlock(cpu_id);
                     *parent_lock = nullptr;
                     // printf("locked a inner node lock %p in shared mode\n", inner);
                 } else {
                     // printf("trying to lock a inner node lock %p in exclusive mode\n", inner);
-                    inner->mutex_.write_lock(PF_WAIT_FOR_LOCK);
+                    inner->mutex_.write_lock();
                     // if (inner->slotuse < inner_slotmax-1) {
                     //     (*parent_lock)->write_unlock();
                     //     *parent_lock = nullptr;
@@ -2033,7 +2033,7 @@ private:
                     lock_p = nullptr;
                   }
                 } else {
-                  lock_p->read_unlock();
+                  lock_p->read_unlock(cpu_id);
                   lock_p = nullptr;
                 }
               }
@@ -2137,7 +2137,7 @@ private:
                 leaf->mutex_.lock();
                 if constexpr (optimism) {
                     if (!leaf->is_full()) {
-                        (*parent_lock)->read_unlock();
+                        (*parent_lock)->read_unlock(cpu_id);
                         *parent_lock = nullptr;
                     }
                 }
