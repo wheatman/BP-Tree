@@ -19,8 +19,8 @@ CFLAGS += -fsanitize=undefined,address -fno-omit-frame-pointer
 endif
 endif
 
-LDFLAGS := -lrt -lm -lpthread -lm -ldl -latomic
-# -ljemalloc
+LDFLAGS := -lrt -lm -lpthread -lm -ldl -latomic -ljemalloc
+# -ljemalloc -ltcmalloc
 
 ifeq ($(VALGRIND),0)
 CFLAGS += -march=native
