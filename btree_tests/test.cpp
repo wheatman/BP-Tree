@@ -3,7 +3,7 @@
 #include <random>
 #include <sys/time.h>
 #include <vector>
-
+#include <set>
 #include <ParallelTools/parallel.h>
 
 #include <tlx/container/btree_set.hpp>
@@ -31,11 +31,11 @@ template <class T>
 std::tuple<bool, uint64_t, uint64_t>
 test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   std::vector<T> data =
-      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+      create_random_data<T>(max_size, 1<<28, seed); //std::numeric_limits<T>::max(), seed);
 
   uint64_t start, end;
 
-  tlx::btree_set<T> serial_set;
+  std::set<T> serial_set;
 
   start = get_usecs();
   for (uint32_t i = 0; i < max_size; i++) {
@@ -56,6 +56,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   uint64_t parallel_time = end - start;
   printf("inserted all the data concurrently in %lu\n", end - start);
 
+  /*
   if (serial_set.size() != concurrent_set.size()) {
     printf("the sizes don't match, got %lu, expetected %lu\n",
            concurrent_set.size(), serial_set.size());
@@ -72,6 +73,15 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     }
     it_serial++;
     it_concurrent++;
+  }
+  */
+  bool wrong = false;
+  for(auto e : serial_set) {
+    // might need to change if you get values because exists takes in a key
+    if(!concurrent_set.exists(e)) {
+      printf("didn't find %lu\n", e);
+      wrong = true;
+    }
   }
   if (wrong) {
     return {false, 0, 0};

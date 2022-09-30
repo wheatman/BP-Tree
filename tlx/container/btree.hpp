@@ -31,6 +31,13 @@
 #include <ParallelTools/reducer.h>
 #include <ParallelTools/Lock.hpp>
 
+#include <leafDS.hpp>
+
+// leafDS parameters
+#define HEADER_SIZE 32
+#define LOG_SIZE HEADER_SIZE
+#define BLOCK_SIZE 32
+#define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
 namespace tlx {
 
 //! \addtogroup tlx_container
@@ -92,8 +99,9 @@ struct btree_default_traits {
 
     //! Number of slots in each leaf of the tree. Estimated so that each node
     //! has a size of about 256 bytes.
-    static const int leaf_slots =
-        TLX_BTREE_MAX(8, 1024 / (sizeof(Value)));
+    static const int leaf_slots = SLOTS;
+	
+        // TLX_BTREE_MAX(8, 1024 / (sizeof(Value)));
 
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
@@ -185,7 +193,7 @@ public:
     //! \{
 
     //! Base B+ tree parameter: The number of key/data slots in each leaf
-    static const unsigned short leaf_slotmax = traits::leaf_slots;
+    static const unsigned short leaf_slotmax = traits::leaf_slots * (9.0 / 10.0);
 
     //! Base B+ tree parameter: The number of key slots in each inner node,
     //! this can differ from slots in each leaf.
@@ -222,14 +230,11 @@ private:
         //! Level in the b-tree, if level == 0 -> leaf node
         unsigned short level;
 
-        //! Number of key slotuse use, so the number of valid children or data
-        //! pointers
-        unsigned short slotuse;
 
         //! Delayed initialisation of constructed node.
         void initialize(const unsigned short l) {
             level = l;
-            slotuse = 0;
+            // slotuse = 0;
         }
 
         //! True if this is a leaf node.
@@ -243,6 +248,10 @@ private:
     struct InnerNode : public node {
         //! Define an related allocator for the InnerNode structs.
         typedef typename std::allocator_traits<Allocator>::template rebind_alloc<InnerNode> alloc_type;
+
+        //! Number of key slotuse use, so the number of valid children or data
+        //! pointers
+        unsigned short slotuse;
 
         mutable ReaderWriterLock mutex_;
 
@@ -264,24 +273,41 @@ private:
 
         //! True if the node's slots are full.
         bool is_full() const {
-            return (node::slotuse == inner_slotmax);
+            return (slotuse == inner_slotmax);
         }
 
         //! True if few used entries, less than half full.
         bool is_few() const {
-            return (node::slotuse <= inner_slotmin);
+            return (slotuse <= inner_slotmin);
         }
 
         //! True if node has too few entries.
         bool is_underflow() const {
-            return (node::slotuse < inner_slotmin);
+            return (slotuse < inner_slotmin);
         }
     };
 
     //! Extended structure of a leaf node in memory. Contains pairs of keys and
     //! data items. Key and data slots are kept together in value_type.
     struct LeafNode : public node {
-        //! Define an related allocator for the LeafNode structs.
+
+					template <typename T> struct pair_check { 
+						using type = T;
+						using rest = T;
+						static constexpr bool is_pair = false;
+					};
+
+					template <typename T1, typename T2> struct pair_check<std::pair<T1, T2>> {
+						using type = T1;
+						using rest = T2;
+						static constexpr bool is_pair = true;
+					};
+
+					static constexpr bool is_pair = pair_check<value_type>::is_pair;
+
+				using leafDS_type = typename std::conditional<is_pair, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type, typename pair_check<value_type>::rest>, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type>>::type;
+        
+				//! Define an related allocator for the LeafNode structs.
         typedef typename std::allocator_traits<Allocator>::template rebind_alloc<LeafNode> alloc_type;
 
         //! Double linked list pointers to traverse the leaves
@@ -293,7 +319,8 @@ private:
         mutable Lock mutex_;
 
         //! Array of (key, data) pairs
-        value_type slotdata[leaf_slotmax]; // NOLINT
+				leafDS_type slotdata;
+        // value_type slotdata[leaf_slotmax]; // NOLINT
 
         //! Set variables to initial values
         void initialize() {
@@ -308,22 +335,27 @@ private:
 
         //! True if the node's slots are full.
         bool is_full() const {
-            return (node::slotuse == leaf_slotmax);
+	    // printf("is full: num elts %lu, leaf_slotmax %lu, slots %lu\n", slotdata.get_num_elements(), leaf_slotmax, SLOTS);
+            return slotdata.get_num_elements() == leaf_slotmax;
         }
 
         //! True if few used entries, less than half full.
         bool is_few() const {
-            return (node::slotuse <= leaf_slotmin);
+					return slotdata.get_num_elements() <= leaf_slotmin;
+          //return slotdata.is_few();  
+					// return (node::slotuse <= leaf_slotmin);
         }
 
         //! True if node has too few entries.
         bool is_underflow() const {
-            return (node::slotuse < leaf_slotmin);
+					return slotdata.get_num_elements() < leaf_slotmin;
         }
 
         //! Set the (key,data) pair in slot. Overloaded function used by
         //! bulk_load().
+
         void set_slot(unsigned short slot, const value_type& value) {
+						
             TLX_BTREE_ASSERT(slot < node::slotuse);
             slotdata[slot] = value;
         }
@@ -401,7 +433,6 @@ public:
 
     public:
         // *** Methods
-
         //! Default-Constructor of a mutable iterator
         iterator()
             : curr_leaf(nullptr), curr_slot(0)
@@ -417,6 +448,7 @@ public:
             : curr_leaf(it.curr_leaf), curr_slot(it.curr_slot)
         { }
 
+/*
         //! Dereference the iterator.
         reference operator * () const {
             return curr_leaf->slotdata[curr_slot];
@@ -513,6 +545,7 @@ public:
         bool operator != (const iterator& x) const {
             return (x.curr_leaf != curr_leaf) || (x.curr_slot != curr_slot);
         }
+	*/
     };
 
     //! STL-like read-only iterator object for B+ tree items. The iterator
@@ -1331,12 +1364,15 @@ private:
     void clear_recursive(node* n) {
         if (n->is_leafnode())
         {
+						return;
+						/*
             LeafNode* leafnode = static_cast<LeafNode*>(n);
 
             for (unsigned short slot = 0; slot < leafnode->slotuse; ++slot)
             {
                 // data objects are deleted by LeafNode's destructor
             }
+						*/
         }
         else
         {
@@ -1552,9 +1588,12 @@ public:
         }
 
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
-
+	// leaf->slotdata.print();
+	return leaf->slotdata.has(key);
+	/*
         unsigned short slot = find_lower(leaf, key);
         return (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));
+	*/
     }
 
     //! Tries to locate a key in the B+ tree and returns an iterator to the
@@ -2067,7 +2106,7 @@ private:
                                     << slot << " > " << inner->slotuse + 1);
 
                     if (slot == inner->slotuse + 1 &&
-                        inner->slotuse < (*splitnode)->slotuse)
+                        ((InnerNode*)inner)->slotuse < ((InnerNode*)(*splitnode))->slotuse)
                     {
                         // special case when the insert slot matches the split
                         // place between the two nodes, then the insert key
@@ -2143,15 +2182,16 @@ private:
                 }
                 // printf("locked leaf lock from %p\n", leaf);
             }
-            unsigned short slot = find_lower(leaf, key);
+            // unsigned short slot = find_lower(leaf, key);
 
-            if (!allow_duplicates &&
-                slot < leaf->slotuse && key_equal(key, leaf->key(slot))) {
+            if (!allow_duplicates && leaf->slotdata.has(key)) {
+                // slot < leaf->slotuse && key_equal(key, leaf->key(slot))) {
                 if constexpr (concurrent) {
                     // printf("unlcoked leaf lock %p\n", leaf);
                     leaf->mutex_.unlock();
                 }
-                return std::tuple<iterator, bool, bool>(iterator(leaf, slot), false, false);
+								// iterator has no meaning in leafDS + btree
+                return std::tuple<iterator, bool, bool>({}, false, false);
             }
 
             if (leaf->is_full())
@@ -2166,24 +2206,25 @@ private:
                 split_leaf_node(leaf, splitkey, splitnode);
 
                 // check if insert slot is in the split sibling node
-                if (slot >= leaf->slotuse)
-                {
-                    slot -= leaf->slotuse;
+                if (key > ((LeafNode*)(*splitnode))->slotdata.get_min_after_split()) { // leaf->slotdata->get_num_elements())
+                    // slot -= leaf->slotuse;
                     leaf = static_cast<LeafNode*>(*splitnode);
                 }
             }
-
             // move items and put data item into correct data slot
-            TLX_BTREE_ASSERT(slot >= 0 && slot <= leaf->slotuse);
-
+            // TLX_BTREE_ASSERT(slot >= 0 && slot <= leaf->slotuse);
+/*	
             std::copy_backward(
                 leaf->slotdata + slot, leaf->slotdata + leaf->slotuse,
                 leaf->slotdata + leaf->slotuse + 1);
-
+		
             leaf->slotdata[slot] = value;
             leaf->slotuse++;
+*/
+		leaf->slotdata.insert(value);
 
-            if (splitnode && leaf != *splitnode && slot == leaf->slotuse - 1)
+  	   // splitkey is the last key in the left side
+            if (splitnode && leaf != *splitnode && key >= *splitkey)
             {
                 // special case: the node was split, and the insert is at the
                 // last slot of the old node. then the splitkey must be updated.
@@ -2193,7 +2234,7 @@ private:
                 // printf("unlocked leaf lock %p\n", leaf);
                 original_leaf->mutex_.unlock();
             }
-            return std::tuple<iterator, bool, bool>(iterator(leaf, slot), true, false);
+            return std::tuple<iterator, bool, bool>({}, true, false);
         }
     }
 
@@ -2203,13 +2244,15 @@ private:
                          key_type* out_newkey, node** out_newleaf) {
         TLX_BTREE_ASSERT(leaf->is_full());
 
-        unsigned short mid = (leaf->slotuse >> 1);
+        // unsigned short mid = (leaf->slotuse >> 1);
 
         TLX_BTREE_PRINT("BTree::split_leaf_node on " << leaf);
 
         LeafNode* newleaf = allocate_leaf();
 
-        newleaf->slotuse = leaf->slotuse - mid;
+	auto middle_elt = leaf->slotdata.split(&(newleaf->slotdata));
+
+        // newleaf->slotuse = leaf->slotuse - mid;
 
         newleaf->next_leaf = leaf->next_leaf;
         if (newleaf->next_leaf == nullptr) {
@@ -2219,15 +2262,15 @@ private:
         else {
             newleaf->next_leaf->prev_leaf = newleaf;
         }
+				
+        // std::copy(leaf->slotdata + mid, leaf->slotdata + leaf->slotuse,
+        //          newleaf->slotdata);
 
-        std::copy(leaf->slotdata + mid, leaf->slotdata + leaf->slotuse,
-                  newleaf->slotdata);
-
-        leaf->slotuse = mid;
+        // leaf->slotuse = mid;
         leaf->next_leaf = newleaf;
         newleaf->prev_leaf = leaf;
 
-        *out_newkey = leaf->key(leaf->slotuse - 1);
+        *out_newkey = middle_elt; // leaf->key(leaf->slotuse - 1);
         *out_newleaf = newleaf;
     }
 
@@ -2282,7 +2325,9 @@ public:
     template <typename Iterator>
     void bulk_load(Iterator ibegin, Iterator iend) {
         TLX_BTREE_ASSERT(empty());
-
+				printf("BULK LOAD NOT IMPLEMENTED\n");                
+				return; 
+				/*
         stats_.size = iend - ibegin;
 
         // calculate number of leaves needed, round up.
@@ -2305,7 +2350,8 @@ public:
             // switch leaf->set_slot().
             leaf->slotuse = static_cast<int>(num_items / (num_leaves - i));
             for (size_t s = 0; s < leaf->slotuse; ++s, ++it)
-                leaf->set_slot(s, *it);
+							printf("BULK LOAD NOT IMPLEMENTED\n");                
+							// leaf->set_slot(s, *it);
 
             if (tail_leaf_ != nullptr) {
                 tail_leaf_->next_leaf = leaf;
@@ -2423,7 +2469,8 @@ public:
         delete[] nextlevel;
 
         if (self_verify) verify();
-    }
+    */
+		}
 
     //! \}
 
@@ -3693,8 +3740,8 @@ private:
             const LeafNode* leaf = static_cast<const LeafNode*>(n);
 
             tlx_die_unless(leaf == root_ || !leaf->is_underflow());
-            tlx_die_unless(leaf->slotuse > 0);
-
+            // tlx_die_unless(leaf->slotuse > 0);
+		/*
             for (unsigned short slot = 0; slot < leaf->slotuse - 1; ++slot)
             {
                 tlx_die_unless(
@@ -3703,9 +3750,9 @@ private:
 
             *minkey = leaf->key(0);
             *maxkey = leaf->key(leaf->slotuse - 1);
-
+	    */
             ++vstats.leaves;
-            vstats.size += leaf->slotuse;
+            // vstats.size += leaf->slotuse;
         }
         else // !n->is_leafnode()
         {
@@ -3789,8 +3836,8 @@ private:
         while (n)
         {
             tlx_die_unless(n->level == 0);
-            tlx_die_unless(n->slotuse > 0);
-
+            // tlx_die_unless(n->slotuse > 0);
+/*
             for (unsigned short slot = 0; slot < n->slotuse - 1; ++slot)
             {
                 tlx_die_unless(key_lessequal(n->key(slot), n->key(slot + 1)));
@@ -3809,7 +3856,7 @@ private:
             {
                 tlx_die_unless(tail_leaf_ == n);
             }
-
+*/
             n = n->next_leaf;
         }
 

@@ -8,7 +8,8 @@ CILK?=0
 SANITIZE?=0
 
 
-CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../ -gdwarf-4
+
+CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -IleafDS/ -I../ -gdwarf-4 -ferror-limit=1
 
 ifeq ($(SANITIZE),1)
 ifeq ($(CILK),1)
@@ -26,7 +27,7 @@ ifeq ($(VALGRIND),0)
 CFLAGS += -march=native
 endif
 
-DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG)
+DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DVALGRIND=$(VALGRIND)
 
 ifeq ($(CILK),1)
 CFLAGS += -fopencilk -DPARLAY_CILK
