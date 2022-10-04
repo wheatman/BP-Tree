@@ -34,9 +34,9 @@
 #include <leafDS.hpp>
 
 // leafDS parameters
-#define HEADER_SIZE 32
+#define HEADER_SIZE 16
 #define LOG_SIZE HEADER_SIZE
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 16
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
 namespace tlx {
 
@@ -193,7 +193,7 @@ public:
     //! \{
 
     //! Base B+ tree parameter: The number of key/data slots in each leaf
-    static const unsigned short leaf_slotmax = traits::leaf_slots * (9.0 / 10.0);
+    static const unsigned short leaf_slotmax = traits::leaf_slots - 3 * LOG_SIZE; // traits::leaf_slots * (9.0 / 10.0);
 
     //! Base B+ tree parameter: The number of key slots in each inner node,
     //! this can differ from slots in each leaf.
@@ -1589,7 +1589,7 @@ public:
 
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
 	// leaf->slotdata.print();
-	return leaf->slotdata.has(key);
+	return leaf->slotdata.has_with_print(key);
 	/*
         unsigned short slot = find_lower(leaf, key);
         return (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));

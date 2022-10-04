@@ -41,6 +41,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   for (uint32_t i = 0; i < max_size; i++) {
     serial_set.insert(data[i]);
   }
+  printf("%lu unique elements\n", serial_set.size());
   end = get_usecs();
   int64_t serial_time = end - start;
   printf("inserted all the data serially in %lu\n", end - start);
