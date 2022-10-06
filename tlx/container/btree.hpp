@@ -321,6 +321,10 @@ private:
             return (node::slotuse < leaf_slotmin);
         }
 
+        bool soon_underflow() const {
+            return (node::slotuse - 1 < leaf_slotmin);
+        }
+
         //! Set the (key,data) pair in slot. Overloaded function used by
         //! bulk_load().
         void set_slot(unsigned short slot, const value_type& value) {
@@ -2493,16 +2497,40 @@ public:
 
     //! Erases one (the first) of the key/data pairs associated with the given
     //! key.
-    bool erase_one(const key_type& key) {
+    template <bool optimism = true>
+    bool erase_one(const key_type& key, int cpu_id = -1) {
         TLX_BTREE_PRINT("BTree::erase_one(" << key <<
                         ") on btree size " << size());
+        if constexpr (concurrent) {
+            if constexpr (optimism) {
+                if (cpu_id == -1) {
+                    cpu_id = sched_getcpu();
+                }
+                mutex.read_lock(cpu_id);
+            } else {
+                mutex.write_lock();
+            }
+        }
 
         if (self_verify) verify();
 
         if (!root_) return false;
 
-        result_t result = erase_one_descend(
-            key, root_, nullptr, nullptr, nullptr, nullptr, nullptr, 0);
+        auto lock_p = &mutex;
+
+        auto [result, try_again] =
+            erase_one_descend<optimism>(key, root_, nullptr, nullptr, nullptr,
+                                        nullptr, nullptr, 0, &lock_p, cpu_id);
+        if constexpr (concurrent) {
+          if constexpr (optimism) {
+            if (lock_p) {
+              lock_p->read_unlock(cpu_id);
+            }
+            if (try_again) {
+              return erase_one<false>(key, cpu_id);
+            }
+          }
+        }
 
         if (!result.has(btree_not_found))
             --stats_.size;
@@ -2511,7 +2539,11 @@ public:
         if (debug) print(std::cout);
 #endif
         if (self_verify) verify();
-
+        if constexpr (concurrent && !optimism) {
+            if (lock_p) {
+                lock_p->write_unlock();
+            }
+        }
         return !result.has(btree_not_found);
     }
 
@@ -2574,14 +2606,23 @@ private:
      * the underflow by shifting key/data pairs from adjacent sibling nodes,
      * merging two sibling nodes or trimming the tree.
      */
-    result_t erase_one_descend(const key_type& key,
+    template<bool optimism>
+    std::pair<result_t, bool> erase_one_descend(const key_type& key,
                                node* curr,
                                node* left, node* right,
                                InnerNode* left_parent, InnerNode* right_parent,
-                               InnerNode* parent, unsigned int parentslot) {
+                               InnerNode* parent, unsigned int parentslot, ReaderWriterLock ** parent_lock, 
+int cpu_id) {
         if (curr->is_leafnode())
         {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
+            if constexpr (concurrent) {
+                leaf->mutex_.lock();
+                if constexpr (optimism) {
+                    (*parent_lock)->read_unlock(cpu_id);
+                    *parent_lock = nullptr;
+                }
+            }
             LeafNode* left_leaf = static_cast<LeafNode*>(left);
             LeafNode* right_leaf = static_cast<LeafNode*>(right);
 
@@ -2590,8 +2631,21 @@ private:
             if (slot >= leaf->slotuse || !key_equal(key, leaf->key(slot)))
             {
                 TLX_BTREE_PRINT("Could not find key " << key << " to erase.");
+                leaf->mutex_.unlock();
+                return {btree_not_found, false};
+            }
 
-                return btree_not_found;
+            // in this case the parent needs to do something 
+            // so in optimism mode we just fail back to the top
+            if constexpr (concurrent && optimism) {
+                if (slot == leaf->slotuse) {
+                    leaf->mutex_.unlock();
+                    return {{}, true};
+                }
+                if (leaf->soon_underflow()) {
+                    leaf->mutex_.unlock();
+                    return {{}, true};
+                }
             }
 
             TLX_BTREE_PRINT(
@@ -2649,8 +2703,10 @@ private:
                     TLX_BTREE_ASSERT(stats_.size == 1);
                     TLX_BTREE_ASSERT(stats_.leaves == 0);
                     TLX_BTREE_ASSERT(stats_.inner_nodes == 0);
-
-                    return btree_ok;
+                    if constexpr (concurrent) {
+                        leaf->mutex_.unlock();
+                    }
+                    return {btree_ok, false};
                 }
                 // case : if both left and right leaves would underflow in case
                 // of a shift, then merging is necessary. choose the more local
@@ -2706,12 +2762,23 @@ private:
                             leaf, right_leaf, right_parent, parentslot);
                 }
             }
-
-            return myres;
+            if constexpr (concurrent) {
+                leaf->mutex_.unlock();
+            }
+            return {myres, false};
         }
         else // !curr->is_leafnode()
         {
             InnerNode* inner = static_cast<InnerNode*>(curr);
+            if constexpr (concurrent) {
+                if constexpr (optimism) {
+                    inner->mutex_.read_lock(cpu_id);
+                    (*parent_lock)->read_unlock(cpu_id);
+                    *parent_lock = nullptr;
+                } else {
+                    inner->mutex_.write_lock();
+                }
+            }
             InnerNode* left_inner = static_cast<InnerNode*>(left);
             InnerNode* right_inner = static_cast<InnerNode*>(right);
 
@@ -2743,19 +2810,27 @@ private:
             }
 
             TLX_BTREE_PRINT("erase_one_descend into " << inner->childid[slot]);
-
-            result_t result = erase_one_descend(
+            auto lock_p = &inner->mutex_;
+            auto [result, try_again] = erase_one_descend<optimism>(
                 key,
                 inner->childid[slot],
                 myleft, myright,
                 myleft_parent, myright_parent,
-                inner, slot);
+                inner, slot, &lock_p, cpu_id);
+            if constexpr (concurrent && optimism) {
+              if (try_again) {
+                return {{}, true};
+              }
+            }
 
             result_t myres = btree_ok;
 
             if (result.has(btree_not_found))
             {
-                return result;
+                if (concurrent && !optimism) {
+                    inner->mutex_.write_unlock();
+                }
+                return {result, false};
             }
 
             if (result.has(btree_update_lastkey))
@@ -2824,8 +2899,10 @@ private:
 
                     inner->slotuse = 0;
                     free_node(inner);
-
-                    return btree_ok;
+                    if (concurrent && !optimism) {
+                        inner->mutex_.write_unlock();
+                    }
+                    return {btree_ok, false};
                 }
                 // case : if both left and right leaves would underflow in case
                 // of a shift, then merging is necessary. choose the more local
@@ -2885,8 +2962,10 @@ private:
                             inner, right_inner, right_parent, parentslot);
                 }
             }
-
-            return myres;
+            if (concurrent && !optimism) {
+                inner->mutex_.write_unlock();
+            }
+            return {myres, false};
         }
     }
 
