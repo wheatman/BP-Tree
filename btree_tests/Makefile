@@ -20,14 +20,14 @@ CFLAGS += -fsanitize=undefined,address -fno-omit-frame-pointer
 endif
 endif
 
-LDFLAGS := -lrt -lm -lpthread -lm -ldl -latomic 
+LDFLAGS := -lrt -lm -lpthread -lm -ldl -latomic -ljemalloc
 # -ljemalloc -ltcmalloc
 
 ifeq ($(VALGRIND),0)
 CFLAGS += -march=native
 endif
 
-DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DVALGRIND=$(VALGRIND)
+DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DVALGRIND=$(VALGRIND) -DAVX512=$(AVX512)
 
 ifeq ($(CILK),1)
 CFLAGS += -fopencilk -DPARLAY_CILK

@@ -8,6 +8,7 @@
 
 #include <tlx/container/btree_set.hpp>
 
+#define TRIALS 5
 static long get_usecs() {
   struct timeval st;
   gettimeofday(&st, NULL);
@@ -28,13 +29,16 @@ std::vector<T> create_random_data(size_t n, size_t max_val,
 }
 
 template <class T>
-std::tuple<bool, uint64_t, uint64_t>
+std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
 test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   std::vector<T> data =
-      create_random_data<T>(max_size, 1<<28, seed); //std::numeric_limits<T>::max(), seed);
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
 
+  for(uint32_t i = 0; i < max_size; i++) {
+    data[i]++; // no zeroes
+  }
   uint64_t start, end;
-
+#if DEBUG
   std::set<T> serial_set;
 
   start = get_usecs();
@@ -43,8 +47,20 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   }
   printf("%lu unique elements\n", serial_set.size());
   end = get_usecs();
-  int64_t serial_time = end - start;
-  printf("inserted all the data serially in %lu\n", end - start);
+  // int64_t serial_time = end - start;
+  // printf("inserted all the data serially in %lu\n", end - start);
+#endif
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, false>
+      serial_test_set;
+  start = get_usecs();
+  for(uint32_t i = 0; i < max_size; i++) {
+    serial_test_set.insert(data[i]);
+  }
+  end = get_usecs();
+  uint64_t serial_time = end - start;
+  printf("\tinserted %d elts serially in %lu\n", max_size, end - start);
 
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                  std::allocator<T>, true>
@@ -55,7 +71,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   }
   end = get_usecs();
   uint64_t parallel_time = end - start;
-  printf("inserted all the data concurrently in %lu\n", end - start);
+  printf("\tinserted %d elts concurrently in %lu\n", max_size, end - start);
 
   /*
   if (serial_set.size() != concurrent_set.size()) {
@@ -76,6 +92,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     it_concurrent++;
   }
   */
+
+#if DEBUG
   bool wrong = false;
   for(auto e : serial_set) {
     // might need to change if you get values because exists takes in a key
@@ -85,9 +103,76 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     }
   }
   if (wrong) {
-    return {false, 0, 0};
+    return {false, 0, 0, 0, 0};
   }
-  return {true, serial_time, parallel_time};
+
+  return {true, serial_time, parallel_time, 0, 0};
+#endif
+
+  std::vector<uint64_t> indxs_to_remove =
+    create_random_data<uint64_t>(max_size / 2, data.size(), seed);
+
+#if DEBUG
+  for (uint32_t i = 0; i < indxs_to_remove.size(); i++) {
+    serial_set.erase(data[indxs_to_remove[i]]);
+  }
+#endif
+
+  uint64_t serial_remove_start = get_usecs();
+  for (uint32_t i = 0; i < indxs_to_remove.size(); i++) {
+    serial_test_set.erase(data[indxs_to_remove[i]]);
+  }
+  uint64_t serial_remove_end = get_usecs();
+  uint64_t serial_remove_time = serial_remove_end - serial_remove_start;
+
+  uint64_t parallel_remove_start = get_usecs();
+  cilk_for(uint32_t i = 0; i < indxs_to_remove.size(); i++) {
+    concurrent_set.erase(data[indxs_to_remove[i]]);
+  }
+
+  uint64_t parallel_remove_end = get_usecs();
+  uint64_t parallel_remove_time = parallel_remove_end - parallel_remove_start;
+
+  printf("removed half the data serially in %lu\n",
+         serial_remove_end - serial_remove_start);
+
+  printf("removed half the data in parallel in %lu\n",
+         parallel_remove_end - parallel_remove_start);
+
+#if DEBUG
+  if (serial_set.size() != concurrent_set.size()) {
+    printf("the sizes don't match, got %lu, expetected %lu\n",
+           concurrent_set.size(), serial_set.size());
+    return {false, 0, 0, 0, 0};
+  }
+  for(auto e : indxs_to_remove) {
+    // might need to change if you get values because exists takes in a key
+    if(concurrent_set.exists(data[e])) {
+      printf("didn't delete %lu\n", data[e]);
+      wrong = true;
+    }
+  }
+  if (wrong) {
+    return {false, 0, 0, 0, 0};
+  }
+#endif
+  // it_serial = serial_set.begin();
+  // it_concurrent = concurrent_set.begin();
+  // wrong = false;
+  // for (uint64_t i = 0; i < serial_set.size(); i++) {
+  //   if (*it_serial != *it_concurrent) {
+  //     printf("don't match in position %lu, got %lu, expected %lu\n", i,
+  //            *it_concurrent, *it_serial);
+  //     wrong = true;
+  //   }
+  //   it_serial++;
+  //   it_concurrent++;
+  // }
+  // if (wrong) {
+  //   return {false, 0, 0, 0, 0};
+  // }
+
+  return {true, serial_time, parallel_time, 0, 0};
 }
 
 int main(int argc, char *argv[]) {
@@ -95,7 +180,7 @@ int main(int argc, char *argv[]) {
     printf("call with the number of elements to insert\n");
     return -1;
   }
-  int trials = 1;
+  int trials = 5;
   if (argc > 2) {
     trials = atoi(argv[2]);
   }
@@ -103,18 +188,28 @@ int main(int argc, char *argv[]) {
   int n = atoi(argv[1]);
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> parallel_times;
-  for (int i = 0; i < trials; i++) {
-    auto [correct, serial, parallel] =
-        test_concurrent_btreeset<unsigned long>(n, seed);
+  std::vector<uint64_t> serial_remove_times;
+  std::vector<uint64_t> parallel_remove_times;
+  for (int i = 0; i < trials + 1; i++) {
+    auto [correct, serial_insert, parallel_insert, serial_remove, parallel_remove] =
+        test_concurrent_btreeset<uint64_t>(n, seed);
     if (!correct) {
       printf("got the wrong answer\n");
       return -1;
     }
-    serial_times.push_back(serial);
-    parallel_times.push_back(parallel);
+    // throw out the first trial
+    if (i > 0) {
+    	serial_times.push_back(serial_insert);
+    	parallel_times.push_back(parallel_insert);
+      serial_remove_times.push_back(serial_remove);
+    	parallel_remove_times.push_back(parallel_remove);
+    }
   }
   std::sort(serial_times.begin(), serial_times.end());
   std::sort(parallel_times.begin(), parallel_times.end());
-  printf("%lu, %lu\n", serial_times[trials / 2], parallel_times[trials / 2]);
+  std::sort(serial_remove_times.begin(), serial_remove_times.end());
+  std::sort(parallel_remove_times.begin(), parallel_remove_times.end());
+  printf("%lu, %lu, %lu, %lu\n", serial_times[trials / 2], parallel_times[trials / 2],
+                                serial_remove_times[trials / 2], parallel_remove_times[trials / 2]);
   return 0;
 }

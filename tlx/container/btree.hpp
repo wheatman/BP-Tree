@@ -34,9 +34,9 @@
 #include <leafDS.hpp>
 
 // leafDS parameters
-#define HEADER_SIZE 16
+#define HEADER_SIZE 32
 #define LOG_SIZE HEADER_SIZE
-#define BLOCK_SIZE 16
+#define BLOCK_SIZE 32
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
 namespace tlx {
 
@@ -241,6 +241,8 @@ private:
         bool is_leafnode() const {
             return (level == 0);
         }
+
+        virtual short get_slotuse () = 0;
     };
 
     //! Extended structure of a inner node in-memory. Contains only keys and no
@@ -269,6 +271,10 @@ private:
         //! Return key in slot s
         const key_type& key(size_t s) const {
             return slotkey[s];
+        }
+
+        short get_slotuse() {
+            return slotuse;
         }
 
         //! True if the node's slots are full.
@@ -329,8 +335,13 @@ private:
         }
 
         //! Return key in slot s.
+        // TODO: is it possible even to have an equiv for leafDS? called in 
         const key_type& key(size_t s) const {
             return key_of_value::get(slotdata[s]);
+        }
+
+        short get_slotuse() {
+            return slotdata.get_num_elements();
         }
 
         //! True if the node's slots are full.
@@ -350,6 +361,11 @@ private:
         bool is_underflow() const {
 					return slotdata.get_num_elements() < leaf_slotmin;
         }
+
+        bool soon_underflow() const {
+            return (slotdata.get_num_elements() - 1 < leaf_slotmin);
+        }
+
 
         //! Set the (key,data) pair in slot. Overloaded function used by
         //! bulk_load().
@@ -2540,16 +2556,40 @@ public:
 
     //! Erases one (the first) of the key/data pairs associated with the given
     //! key.
-    bool erase_one(const key_type& key) {
+    template <bool optimism = true>
+    bool erase_one(const key_type& key, int cpu_id = -1) {
         TLX_BTREE_PRINT("BTree::erase_one(" << key <<
                         ") on btree size " << size());
+
+        if constexpr (concurrent) {
+            if constexpr (optimism) {
+                if (cpu_id == -1) {
+                    cpu_id = sched_getcpu();
+                }
+                mutex.read_lock(cpu_id);
+            } else {
+                mutex.write_lock();
+            }
+        }
 
         if (self_verify) verify();
 
         if (!root_) return false;
 
-        result_t result = erase_one_descend(
-            key, root_, nullptr, nullptr, nullptr, nullptr, nullptr, 0);
+        auto lock_p = &mutex;
+        auto [result, try_again] =
+            erase_one_descend<optimism>(key, root_, nullptr, nullptr, nullptr,
+                                        nullptr, nullptr, 0, &lock_p, cpu_id);
+        if constexpr (concurrent) {
+          if constexpr (optimism) {
+            if (lock_p) {
+              lock_p->read_unlock(cpu_id);
+            }
+            if (try_again) {
+              return erase_one<false>(key, cpu_id);
+            }
+          }
+        }
 
         if (!result.has(btree_not_found))
             --stats_.size;
@@ -2558,6 +2598,12 @@ public:
         if (debug) print(std::cout);
 #endif
         if (self_verify) verify();
+
+        if constexpr (concurrent && !optimism) {
+            if (lock_p) {
+                lock_p->write_unlock();
+            }
+        }
 
         return !result.has(btree_not_found);
     }
@@ -2621,53 +2667,80 @@ private:
      * the underflow by shifting key/data pairs from adjacent sibling nodes,
      * merging two sibling nodes or trimming the tree.
      */
-    result_t erase_one_descend(const key_type& key,
+    template<bool optimism>
+    std::pair<result_t, bool> erase_one_descend(const key_type& key,
                                node* curr,
                                node* left, node* right,
                                InnerNode* left_parent, InnerNode* right_parent,
-                               InnerNode* parent, unsigned int parentslot) {
+                               InnerNode* parent, unsigned int parentslot, 
+                               ReaderWriterLock ** parent_lock, int cpu_id) {
         if (curr->is_leafnode())
         {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
+            if constexpr (concurrent) {
+                leaf->mutex_.lock();
+                if constexpr (optimism) {
+                    (*parent_lock)->read_unlock(cpu_id);
+                    *parent_lock = nullptr;
+                }
+            }
             LeafNode* left_leaf = static_cast<LeafNode*>(left);
             LeafNode* right_leaf = static_cast<LeafNode*>(right);
 
-            unsigned short slot = find_lower(leaf, key);
+            // unsigned short slot = find_lower(leaf, key);
 
-            if (slot >= leaf->slotuse || !key_equal(key, leaf->key(slot)))
+            if (!leaf->slotdata.has(key))
             {
                 TLX_BTREE_PRINT("Could not find key " << key << " to erase.");
-
-                return btree_not_found;
+                leaf->mutex_.unlock();
+                return {btree_not_found, false};
             }
 
             TLX_BTREE_PRINT(
-                "Found key in leaf " << curr << " at slot " << slot);
+                "Found key in leaf " << curr );
 
-            std::copy(leaf->slotdata + slot + 1, leaf->slotdata + leaf->slotuse,
-                      leaf->slotdata + slot);
+            // TODO: leafDS function that gets max and second max?
+            // Needed for case checks 
+            key_type leaf_max, leaf_second_max;
+            leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
+            
+            if constexpr (concurrent && optimism) {
+                // need to check if key is largest val in leaf
+                if (key_equal(key, leaf_max)) {
+                    leaf->mutex_.unlock();
+                    return {{}, true};
+                }
+                if (leaf->soon_underflow()) {
+                    leaf->mutex_.unlock();
+                    return {{}, true};
+                }
+            }
 
-            leaf->slotuse--;
+            leaf->slotdata.remove(key);
+            // std::copy(leaf->slotdata + slot + 1, leaf->slotdata + leaf->slotuse,
+            //           leaf->slotdata + slot);
+
+            // leaf->slotuse--;
 
             result_t myres = btree_ok;
 
             // if the last key of the leaf was changed, the parent is notified
             // and updates the key of this leaf
-            if (slot == leaf->slotuse)
+            if (key_equal(key, leaf_max))
             {
                 if (parent && parentslot < parent->slotuse)
                 {
                     TLX_BTREE_ASSERT(parent->childid[parentslot] == curr);
-                    parent->slotkey[parentslot] = leaf->key(leaf->slotuse - 1);
+                    parent->slotkey[parentslot] = leaf_second_max;
                 }
                 else
                 {
-                    if (leaf->slotuse >= 1)
+                    if (leaf->slotdata.get_num_elements() >= 1)
                     {
                         TLX_BTREE_PRINT("Scheduling lastkeyupdate: key " <<
-                                        leaf->key(leaf->slotuse - 1));
+                                        leaf->key(leaf->slotdata.get_num_elements() - 1));
                         myres |= result_t(
-                            btree_update_lastkey, leaf->key(leaf->slotuse - 1));
+                            btree_update_lastkey, leaf_second_max);
                     }
                     else
                     {
@@ -2676,7 +2749,7 @@ private:
                 }
             }
 
-            if (leaf->is_underflow() && !(leaf == root_ && leaf->slotuse >= 1))
+            if (leaf->is_underflow() && !(leaf == root_ && leaf->slotdata.get_num_elements() >= 1))
             {
                 // determine what to do about the underflow
 
@@ -2685,7 +2758,7 @@ private:
                 if (left_leaf == nullptr && right_leaf == nullptr)
                 {
                     TLX_BTREE_ASSERT(leaf == root_);
-                    TLX_BTREE_ASSERT(leaf->slotuse == 0);
+                    TLX_BTREE_ASSERT(leaf->slotdata.get_num_elements() == 0);
 
                     free_node(root_);
 
@@ -2697,7 +2770,10 @@ private:
                     TLX_BTREE_ASSERT(stats_.leaves == 0);
                     TLX_BTREE_ASSERT(stats_.inner_nodes == 0);
 
-                    return btree_ok;
+                    if constexpr (concurrent) {
+                        leaf->mutex_.unlock();
+                    }
+                    return {btree_ok, false};
                 }
                 // case : if both left and right leaves would underflow in case
                 // of a shift, then merging is necessary. choose the more local
@@ -2736,7 +2812,7 @@ private:
                 // parent, choose the leaf with more data
                 else if (left_parent == right_parent)
                 {
-                    if (left_leaf->slotuse <= right_leaf->slotuse)
+                    if (left_leaf->slotdata.get_num_elements() <= right_leaf->slotdata.get_num_elements())
                         myres |= shift_left_leaf(
                             leaf, right_leaf, right_parent, parentslot);
                     else
@@ -2754,11 +2830,23 @@ private:
                 }
             }
 
-            return myres;
+            if constexpr (concurrent) {
+                leaf->mutex_.unlock();
+            }
+            return {myres, false};
         }
         else // !curr->is_leafnode()
         {
             InnerNode* inner = static_cast<InnerNode*>(curr);
+            if constexpr (concurrent) {
+                if constexpr (optimism) {
+                    inner->mutex_.read_lock(cpu_id);
+                    (*parent_lock)->read_unlock(cpu_id);
+                    *parent_lock = nullptr;
+                } else {
+                    inner->mutex_.write_lock();
+                }
+            }
             InnerNode* left_inner = static_cast<InnerNode*>(left);
             InnerNode* right_inner = static_cast<InnerNode*>(right);
 
@@ -2770,7 +2858,7 @@ private:
             if (slot == 0) {
                 myleft =
                     (left == nullptr) ? nullptr :
-                    static_cast<InnerNode*>(left)->childid[left->slotuse - 1];
+                    static_cast<InnerNode*>(left)->childid[left->get_slotuse() - 1];
                 myleft_parent = left_parent;
             }
             else {
@@ -2791,18 +2879,27 @@ private:
 
             TLX_BTREE_PRINT("erase_one_descend into " << inner->childid[slot]);
 
-            result_t result = erase_one_descend(
+            auto lock_p = &inner->mutex_;
+            auto [result, try_again] = erase_one_descend<optimism>(
                 key,
                 inner->childid[slot],
                 myleft, myright,
                 myleft_parent, myright_parent,
-                inner, slot);
+                inner, slot, &lock_p, cpu_id);
+            if constexpr (concurrent && optimism) {
+              if (try_again) {
+                return {{}, true};
+              }
+            }
 
             result_t myres = btree_ok;
 
             if (result.has(btree_not_found))
             {
-                return result;
+                if (concurrent && !optimism) {
+                    inner->mutex_.write_unlock();
+                }
+                return {result, false};
             }
 
             if (result.has(btree_update_lastkey))
@@ -2829,7 +2926,7 @@ private:
             {
                 // either the current node or the next is empty and should be
                 // removed
-                if (inner->childid[slot]->slotuse != 0)
+                if (inner->childid[slot]->get_slotuse() != 0)
                     slot++;
 
                 // this is the child slot invalidated by the merge
@@ -2853,7 +2950,7 @@ private:
                     slot--;
                     LeafNode* child =
                         static_cast<LeafNode*>(inner->childid[slot]);
-                    inner->slotkey[slot] = child->key(child->slotuse - 1);
+                    inner->slotkey[slot] = child->key(child->get_slotuse() - 1);
                 }
             }
 
@@ -2872,7 +2969,10 @@ private:
                     inner->slotuse = 0;
                     free_node(inner);
 
-                    return btree_ok;
+                    if (concurrent && !optimism) {
+                        inner->mutex_.write_unlock();
+                    }
+                    return {btree_ok, false};
                 }
                 // case : if both left and right leaves would underflow in case
                 // of a shift, then merging is necessary. choose the more local
@@ -2933,7 +3033,10 @@ private:
                 }
             }
 
-            return myres;
+            if (concurrent && !optimism) {
+                inner->mutex_.write_unlock();
+            }
+            return {myres, false};
         }
     }
 
@@ -3322,10 +3425,13 @@ private:
 
         TLX_BTREE_ASSERT(left->slotuse + right->slotuse < leaf_slotmax);
 
-        std::copy(right->slotdata, right->slotdata + right->slotuse,
-                  left->slotdata + left->slotuse);
 
-        left->slotuse += right->slotuse;
+        // TODO: leafDS merge api, puts everything from right into left
+        left->slotdata.merge(&(right->slotdata));
+        // std::copy(right->slotdata, right->slotdata + right->slotuse,
+        //           left->slotdata + left->slotuse);
+
+        // left->slotuse += right->slotuse;
 
         left->next_leaf = right->next_leaf;
         if (left->next_leaf)
@@ -3333,7 +3439,7 @@ private:
         else
             tail_leaf_ = left;
 
-        right->slotuse = 0;
+        // right->slotuse = 0;
 
         return btree_fixmerge;
     }
@@ -3400,7 +3506,7 @@ private:
         TLX_BTREE_ASSERT(left->slotuse < right->slotuse);
         TLX_BTREE_ASSERT(parent->childid[parentslot] == left);
 
-        unsigned int shiftnum = (right->slotuse - left->slotuse) >> 1;
+        unsigned int shiftnum = (right->get_slotuse() - left->get_slotuse()) >> 1;
 
         TLX_BTREE_PRINT("Shifting (leaf) " << shiftnum << " entries to left " <<
                         left << " from right " << right <<
@@ -3411,25 +3517,27 @@ private:
         // copy the first items from the right node to the last slot in the left
         // node.
 
-        std::copy(right->slotdata, right->slotdata + shiftnum,
-                  left->slotdata + left->slotuse);
+        // TODO: leafDS shift_left, should copy right-> end of left then shift right elems over
+        left->slotdata.shift_left(&(right->slotdata), shiftnum);
 
-        left->slotuse += shiftnum;
+        // std::copy(right->slotdata, right->slotdata + shiftnum,
+        //           left->slotdata + left->slotuse);
 
         // shift all slots in the right node to the left
 
-        std::copy(right->slotdata + shiftnum, right->slotdata + right->slotuse,
-                  right->slotdata);
+        // std::copy(right->slotdata + shiftnum, right->slotdata + right->slotuse,
+        //           right->slotdata);
 
-        right->slotuse -= shiftnum;
+        // left->slotuse += shiftnum;
+        // right->slotuse -= shiftnum;
 
         // fixup parent
         if (parentslot < parent->slotuse) {
-            parent->slotkey[parentslot] = left->key(left->slotuse - 1);
+            parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
             return btree_ok;
         }
         else {  // the update is further up the tree
-            return result_t(btree_update_lastkey, left->key(left->slotuse - 1));
+            return result_t(btree_update_lastkey, left->key(left->get_slotuse() - 1));
         }
     }
 
@@ -3512,7 +3620,7 @@ private:
 
         TLX_BTREE_ASSERT(left->slotuse > right->slotuse);
 
-        unsigned int shiftnum = (left->slotuse - right->slotuse) >> 1;
+        unsigned int shiftnum = (left->get_slotuse() - right->get_slotuse()) >> 1;
 
         TLX_BTREE_PRINT("Shifting (leaf) " << shiftnum <<
                         " entries to right " << right <<
@@ -3538,20 +3646,22 @@ private:
 
         TLX_BTREE_ASSERT(right->slotuse + shiftnum < leaf_slotmax);
 
-        std::copy_backward(right->slotdata, right->slotdata + right->slotuse,
-                           right->slotdata + right->slotuse + shiftnum);
+        // TODO: leafDS shift_right, should shift right over to make room first then copy left -> right
+        right->slotdata.shift_right(&(left->slotdata), shiftnum);
+        // std::copy_backward(right->slotdata, right->slotdata + right->slotuse,
+        //                    right->slotdata + right->slotuse + shiftnum);
 
-        right->slotuse += shiftnum;
+        // right->slotuse += shiftnum;
 
         // copy the last items from the left node to the first slot in the right
         // node.
-        std::copy(left->slotdata + left->slotuse - shiftnum,
-                  left->slotdata + left->slotuse,
-                  right->slotdata);
+        // std::copy(left->slotdata + left->slotuse - shiftnum,
+        //           left->slotdata + left->slotuse,
+        //           right->slotdata);
 
-        left->slotuse -= shiftnum;
+        // left->slotuse -= shiftnum;
 
-        parent->slotkey[parentslot] = left->key(left->slotuse - 1);
+        parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
     }
 
     //! Balance two inner nodes. The function moves key/data pairs from left to
