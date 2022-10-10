@@ -1,3 +1,4 @@
+#include "ParallelTools/reducer.h"
 #include <algorithm>
 #include <functional>
 #include <random>
@@ -7,6 +8,10 @@
 #include <ParallelTools/parallel.h>
 
 #include <tlx/container/btree_set.hpp>
+
+#if CILK != 1
+#define cilk_for for
+#endif
 
 static long get_usecs() {
   struct timeval st;
@@ -106,6 +111,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
            concurrent_set.size(), serial_set.size());
     return {false, 0, 0, 0, 0};
   }
+  printf("inserted %lu elements\n", serial_set.size());
   it_serial = serial_set.begin();
   it_concurrent = concurrent_set.begin();
   wrong = false;
@@ -126,6 +132,26 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
           parallel_remove_time};
 }
 
+template <class T>
+void test_concurrent_find(uint64_t max_size, std::seed_seq &seed) {
+  std::vector<T> data =
+      create_random_data<T>(max_size * 2, std::numeric_limits<T>::max(), seed);
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true>
+      concurrent_set;
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_set.insert(data[i]);
+  }
+  printf("have %lu elements\n", concurrent_set.size());
+  ParallelTools::Reducer_sum<uint64_t> found;
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    found += concurrent_set.exists(data[i]);
+    concurrent_set.insert(data[i + max_size]);
+  }
+  printf("found %lu elements\n", found.get());
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -137,6 +163,9 @@ int main(int argc, char *argv[]) {
   }
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
+
+  { test_concurrent_find<uint64_t>(n, seed); }
+
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> serial_remove_times;
   std::vector<uint64_t> parallel_times;
