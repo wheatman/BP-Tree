@@ -34,6 +34,7 @@
 #include <leafDS.hpp>
 
 // leafDS parameters
+#define MANUAL_GET_NUM_ELTS 1
 #define HEADER_SIZE 32
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
@@ -335,11 +336,12 @@ private:
         }
 
         //! Return key in slot s.
-        // TODO: is it possible even to have an equiv for leafDS? called in 
+        // TODO: is it possible even to have a const equiv for leafDS? 
+        // scary const_cast here
         const key_type& key(size_t s) const {
-            return key_of_value::get(slotdata[s]);
+            return const_cast<leafDS_type*>(&slotdata)->get_key_at_sorted_index(s);
         }
-
+#if !MANUAL_GET_NUM_ELTS
         short get_slotuse() {
             return slotdata.get_num_elements();
         }
@@ -365,7 +367,35 @@ private:
         bool soon_underflow() const {
             return (slotdata.get_num_elements() - 1 < leaf_slotmin);
         }
+#else
+        unsigned short manual_slotuse;
 
+        short get_slotuse() {
+            return manual_slotuse;
+        }
+
+        //! True if the node's slots are full.
+        bool is_full() const {
+	    // printf("is full: num elts %lu, leaf_slotmax %lu, slots %lu\n", slotdata.get_num_elements(), leaf_slotmax, SLOTS);
+            return manual_slotuse == leaf_slotmax;
+        }
+
+        //! True if few used entries, less than half full.
+        bool is_few() const {
+					return manual_slotuse <= leaf_slotmin;
+          //return slotdata.is_few();  
+					// return (node::slotuse <= leaf_slotmin);
+        }
+
+        //! True if node has too few entries.
+        bool is_underflow() const {
+					return manual_slotuse < leaf_slotmin;
+        }
+
+        bool soon_underflow() const {
+            return (manual_slotuse - 1 < leaf_slotmin);
+        }
+#endif
 
         //! Set the (key,data) pair in slot. Overloaded function used by
         //! bulk_load().
@@ -2237,6 +2267,9 @@ private:
             leaf->slotdata[slot] = value;
             leaf->slotuse++;
 */
+#if MANUAL_GET_NUM_ELTS
+        leaf->manual_slotuse++;
+#endif
 		leaf->slotdata.insert(value);
 
   	   // splitkey is the last key in the left side
@@ -2268,6 +2301,10 @@ private:
 
 	auto middle_elt = leaf->slotdata.split(&(newleaf->slotdata));
 
+#if MANUAL_GET_NUM_ELTS
+        unsigned short mid = (leaf->manual_slotuse >> 1);
+        newleaf->manual_slotuse = leaf->manual_slotuse - mid;
+#endif
         // newleaf->slotuse = leaf->slotuse - mid;
 
         newleaf->next_leaf = leaf->next_leaf;
@@ -2283,6 +2320,10 @@ private:
         //          newleaf->slotdata);
 
         // leaf->slotuse = mid;
+#if MANUAL_GET_NUM_ELTS
+        leaf->manual_slotuse = mid;
+#endif
+
         leaf->next_leaf = newleaf;
         newleaf->prev_leaf = leaf;
 
@@ -2702,7 +2743,8 @@ private:
             // TODO: leafDS function that gets max and second max?
             // Needed for case checks 
             key_type leaf_max, leaf_second_max;
-            leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
+            leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max, leaf->get_slotuse());
+            // printf("largest")
             
             if constexpr (concurrent && optimism) {
                 // need to check if key is largest val in leaf
@@ -2735,10 +2777,10 @@ private:
                 }
                 else
                 {
-                    if (leaf->slotdata.get_num_elements() >= 1)
+                    if (leaf->get_slotuse() >= 1)
                     {
                         TLX_BTREE_PRINT("Scheduling lastkeyupdate: key " <<
-                                        leaf->key(leaf->slotdata.get_num_elements() - 1));
+                                        leaf->key(leaf->get_slotuse() - 1));
                         myres |= result_t(
                             btree_update_lastkey, leaf_second_max);
                     }
@@ -2749,7 +2791,7 @@ private:
                 }
             }
 
-            if (leaf->is_underflow() && !(leaf == root_ && leaf->slotdata.get_num_elements() >= 1))
+            if (leaf->is_underflow() && !(leaf == root_ && leaf->get_slotuse() >= 1))
             {
                 // determine what to do about the underflow
 
@@ -2758,7 +2800,7 @@ private:
                 if (left_leaf == nullptr && right_leaf == nullptr)
                 {
                     TLX_BTREE_ASSERT(leaf == root_);
-                    TLX_BTREE_ASSERT(leaf->slotdata.get_num_elements() == 0);
+                    TLX_BTREE_ASSERT(leaf->get_slotuse() == 0);
 
                     free_node(root_);
 
@@ -2812,7 +2854,7 @@ private:
                 // parent, choose the leaf with more data
                 else if (left_parent == right_parent)
                 {
-                    if (left_leaf->slotdata.get_num_elements() <= right_leaf->slotdata.get_num_elements())
+                    if (left_leaf->get_slotuse() <= right_leaf->get_slotuse())
                         myres |= shift_left_leaf(
                             leaf, right_leaf, right_parent, parentslot);
                     else
@@ -3432,7 +3474,9 @@ private:
         //           left->slotdata + left->slotuse);
 
         // left->slotuse += right->slotuse;
-
+#if MANUAL_GET_NUM_ELTS
+        left->manual_slotuse += right->manual_slotuse;
+#endif
         left->next_leaf = right->next_leaf;
         if (left->next_leaf)
             left->next_leaf->prev_leaf = left;
@@ -3440,7 +3484,9 @@ private:
             tail_leaf_ = left;
 
         // right->slotuse = 0;
-
+#if MANUAL_GET_NUM_ELTS
+        right->manual_slotuse = 0;
+#endif
         return btree_fixmerge;
     }
 
@@ -3503,7 +3549,7 @@ private:
         TLX_BTREE_ASSERT(left->next_leaf == right);
         TLX_BTREE_ASSERT(left == right->prev_leaf);
 
-        TLX_BTREE_ASSERT(left->slotuse < right->slotuse);
+        TLX_BTREE_ASSERT(left->get_slotuse() < right->get_slotuse());
         TLX_BTREE_ASSERT(parent->childid[parentslot] == left);
 
         unsigned int shiftnum = (right->get_slotuse() - left->get_slotuse()) >> 1;
@@ -3512,7 +3558,7 @@ private:
                         left << " from right " << right <<
                         " with common parent " << parent << ".");
 
-        TLX_BTREE_ASSERT(left->slotuse + shiftnum < leaf_slotmax);
+        TLX_BTREE_ASSERT(left->get_slotuse() + shiftnum < leaf_slotmax);
 
         // copy the first items from the right node to the last slot in the left
         // node.
@@ -3530,6 +3576,10 @@ private:
 
         // left->slotuse += shiftnum;
         // right->slotuse -= shiftnum;
+#if MANUAL_GET_NUM_ELTS
+        left->manual_slotuse += shiftnum;
+        right->manual_slotuse -= shiftnum;
+#endif
 
         // fixup parent
         if (parentslot < parent->slotuse) {
@@ -3618,7 +3668,7 @@ private:
         TLX_BTREE_ASSERT(left == right->prev_leaf);
         TLX_BTREE_ASSERT(parent->childid[parentslot] == left);
 
-        TLX_BTREE_ASSERT(left->slotuse > right->slotuse);
+        TLX_BTREE_ASSERT(left->get_slotuse() > right->get_slotuse());
 
         unsigned int shiftnum = (left->get_slotuse() - right->get_slotuse()) >> 1;
 
@@ -3647,7 +3697,11 @@ private:
         TLX_BTREE_ASSERT(right->slotuse + shiftnum < leaf_slotmax);
 
         // TODO: leafDS shift_right, should shift right over to make room first then copy left -> right
+#if MANUAL_GET_NUM_ELTS
+        right->slotdata.shift_right(&(left->slotdata), shiftnum, left->manual_slotuse);
+#else
         right->slotdata.shift_right(&(left->slotdata), shiftnum);
+#endif
         // std::copy_backward(right->slotdata, right->slotdata + right->slotuse,
         //                    right->slotdata + right->slotuse + shiftnum);
 
@@ -3661,6 +3715,10 @@ private:
 
         // left->slotuse -= shiftnum;
 
+#if MANUAL_GET_NUM_ELTS
+        right->manual_slotuse += shiftnum;
+        left->manual_slotuse -= shiftnum;
+#endif
         parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
     }
 

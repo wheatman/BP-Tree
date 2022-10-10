@@ -105,8 +105,6 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   if (wrong) {
     return {false, 0, 0, 0, 0};
   }
-
-  return {true, serial_time, parallel_time, 0, 0};
 #endif
 
   std::vector<uint64_t> indxs_to_remove =
@@ -127,7 +125,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
   uint64_t parallel_remove_start = get_usecs();
   cilk_for(uint32_t i = 0; i < indxs_to_remove.size(); i++) {
-    concurrent_set.erase(data[indxs_to_remove[i]]);
+    // concurrent_set.erase(data[indxs_to_remove[i]]);
   }
 
   uint64_t parallel_remove_end = get_usecs();
@@ -140,21 +138,40 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
          parallel_remove_end - parallel_remove_start);
 
 #if DEBUG
-  if (serial_set.size() != concurrent_set.size()) {
-    printf("the sizes don't match, got %lu, expetected %lu\n",
-           concurrent_set.size(), serial_set.size());
+
+  if (serial_set.size() != serial_test_set.size()) {
+    printf("the sizes of serial set and correct set don't match, got %lu, expected %lu\n",
+           serial_test_set.size(), serial_set.size());
     return {false, 0, 0, 0, 0};
   }
+
   for(auto e : indxs_to_remove) {
     // might need to change if you get values because exists takes in a key
-    if(concurrent_set.exists(data[e])) {
-      printf("didn't delete %lu\n", data[e]);
+    if(serial_test_set.exists(data[e])) {
+      printf("serial, didn't delete %lu\n", data[e]);
       wrong = true;
     }
   }
   if (wrong) {
     return {false, 0, 0, 0, 0};
   }
+
+  // if (serial_set.size() != concurrent_set.size()) {
+  //   printf("the sizes of concurrent set and correct set don't match, got %lu, expected %lu\n",
+  //          concurrent_set.size(), serial_set.size());
+  //   return {false, 0, 0, 0, 0};
+  // }
+
+  // for(auto e : indxs_to_remove) {
+  //   // might need to change if you get values because exists takes in a key
+  //   if(concurrent_set.exists(data[e])) {
+  //     printf("concurrent, didn't delete %lu\n", data[e]);
+  //     wrong = true;
+  //   }
+  // }
+  // if (wrong) {
+  //   return {false, 0, 0, 0, 0};
+  // }
 #endif
   // it_serial = serial_set.begin();
   // it_concurrent = concurrent_set.begin();
