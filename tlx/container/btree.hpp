@@ -1635,7 +1635,7 @@ public:
 
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
 	// leaf->slotdata.print();
-	return leaf->slotdata.has_with_print(key);
+	return leaf->slotdata.has(key);
 	/*
         unsigned short slot = find_lower(leaf, key);
         return (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));
@@ -2597,7 +2597,7 @@ public:
 
     //! Erases one (the first) of the key/data pairs associated with the given
     //! key.
-    template <bool optimism = true>
+    template <bool optimism = false>
     bool erase_one(const key_type& key, int cpu_id = -1) {
         TLX_BTREE_PRINT("BTree::erase_one(" << key <<
                         ") on btree size " << size());
@@ -2761,9 +2761,10 @@ private:
             leaf->slotdata.remove(key);
             // std::copy(leaf->slotdata + slot + 1, leaf->slotdata + leaf->slotuse,
             //           leaf->slotdata + slot);
-
-            // leaf->slotuse--;
-
+            // leaf->slotuse--; 
+#if MANUAL_GET_NUM_ELTS
+            leaf->manual_slotuse--;
+#endif
             result_t myres = btree_ok;
 
             // if the last key of the leaf was changed, the parent is notified
@@ -2801,6 +2802,10 @@ private:
                 {
                     TLX_BTREE_ASSERT(leaf == root_);
                     TLX_BTREE_ASSERT(leaf->get_slotuse() == 0);
+
+                    printf("in empty root? \n\tleaf size = %lu \n", leaf->get_slotuse());
+                    printf("was trying to delete elt = %lu \n", key);
+                    // printf("tree stats:\n \t size = %lu\n \t leaves = %lu\n\t inner_nodes = %lu\n", stats_.size, stats_.leaves, stats_.inner_nodes);
 
                     free_node(root_);
 
