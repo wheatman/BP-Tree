@@ -339,7 +339,7 @@ private:
         // TODO: is it possible even to have a const equiv for leafDS? 
         // scary const_cast here
         const key_type& key(size_t s) const {
-            return const_cast<leafDS_type*>(&slotdata)->get_key_at_sorted_index(s);
+            return slotdata.get_key_at_sorted_index(s);
         }
 #if !MANUAL_GET_NUM_ELTS
         short get_slotuse() {
