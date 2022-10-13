@@ -38,7 +38,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
 
-  uint64_t start, end;
+  uint64_t start, end, serial_time;
 
 #if DEBUG
   tlx::btree_set<T> serial_set;
@@ -47,7 +47,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     serial_set.insert(data[i]);
   }
   end = get_usecs();
-  int64_t serial_time = end - start;
+  serial_time = end - start;
   printf("inserted all the data serially in %lu\n", end - start);
 #endif
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
@@ -58,7 +58,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     serial_test_set.insert(data[i]);
   }
   end = get_usecs();
-  uint64_t serial_time = end - start;
+  serial_time = end - start;
   printf("\tinserted %lu elts serially in %lu\n", max_size, serial_time);
 
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
@@ -70,7 +70,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   end = get_usecs();
   uint64_t parallel_time = end - start;
   printf("\tinserted %lu elts concurrently in %lu\n", max_size, parallel_time);
-#if DEBUG
+
+// #if DEBUG
   if (serial_set.size() != concurrent_set.size()) {
     printf("the sizes don't match, got %lu, expetected %lu\n",
            concurrent_set.size(), serial_set.size());
@@ -106,8 +107,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   cilk_for(uint32_t i = 0; i < indxs_to_remove.size(); i++) {
     concurrent_set.erase(data[indxs_to_remove[i]]);
   }
-  return {true, serial_time, parallel_time};
-#endif
+  // return {true, serial_time, parallel_time, serial_remove_time, parallel_remove_time};
+// #endif
 
   uint64_t parallel_remove_end = get_usecs();
   uint64_t parallel_remove_time = parallel_remove_end - parallel_remove_start;
@@ -162,7 +163,6 @@ void test_concurrent_find(uint64_t max_size, std::seed_seq &seed) {
     concurrent_set.insert(data[i + max_size]);
   }
   printf("found %lu elements\n", found.get());
->>>>>>> 9d83e570fb033252be6b29926985ac8c568a5889
 }
 
 int main(int argc, char *argv[]) {
