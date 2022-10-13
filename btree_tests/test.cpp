@@ -35,8 +35,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
   uint64_t start, end;
 
+#if DEBUG
   tlx::btree_set<T> serial_set;
-
   start = get_usecs();
   for (uint32_t i = 0; i < max_size; i++) {
     serial_set.insert(data[i]);
@@ -44,18 +44,28 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   end = get_usecs();
   int64_t serial_time = end - start;
   printf("inserted all the data serially in %lu\n", end - start);
+#endif
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, false>
+      serial_test_set;
+  start = get_usecs();
+  for(uint32_t i = 0; i < max_size; i++) {
+    serial_test_set.insert(data[i]);
+  }
+  end = get_usecs();
+  uint64_t serial_time = end - start;
+  printf("\tinserted %lu elts serially in %lu\n", max_size, serial_time);
 
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
-                 std::allocator<T>, true>
-      concurrent_set;
+                 std::allocator<T>, true> concurrent_set;
   start = get_usecs();
   cilk_for(uint32_t i = 0; i < max_size; i++) {
     concurrent_set.insert(data[i]);
   }
   end = get_usecs();
   uint64_t parallel_time = end - start;
-  printf("inserted all the data concurrently in %lu\n", end - start);
-
+  printf("\tinserted %lu elts concurrently in %lu\n", max_size, parallel_time);
+#if DEBUG
   if (serial_set.size() != concurrent_set.size()) {
     printf("the sizes don't match, got %lu, expetected %lu\n",
            concurrent_set.size(), serial_set.size());
@@ -77,6 +87,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     return {false, 0, 0};
   }
   return {true, serial_time, parallel_time};
+#endif
+  return {true, serial_time, parallel_time};
 }
 
 int main(int argc, char *argv[]) {
@@ -92,18 +104,21 @@ int main(int argc, char *argv[]) {
   int n = atoi(argv[1]);
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> parallel_times;
-  for (int i = 0; i < trials; i++) {
+  for (int i = 0; i < trials + 1; i++) {
+    printf("trial %d for %d elts\n", i, n);
     auto [correct, serial, parallel] =
         test_concurrent_btreeset<unsigned long>(n, seed);
     if (!correct) {
       printf("got the wrong answer\n");
       return -1;
     }
-    serial_times.push_back(serial);
-    parallel_times.push_back(parallel);
+    if (i > 0) {
+	    serial_times.push_back(serial);
+	    parallel_times.push_back(parallel);
+    }
   }
   std::sort(serial_times.begin(), serial_times.end());
   std::sort(parallel_times.begin(), parallel_times.end());
-  printf("%lu, %lu\n", serial_times[trials / 2], parallel_times[trials / 2]);
+  printf("***serial = %lu, parallel = %lu***\n", serial_times[trials / 2], parallel_times[trials / 2]);
   return 0;
 }
