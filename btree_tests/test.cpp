@@ -4,7 +4,7 @@
 #include <random>
 #include <sys/time.h>
 #include <vector>
-
+#include <set>
 #include <ParallelTools/parallel.h>
 
 #include <tlx/container/btree_set.hpp>
@@ -165,6 +165,68 @@ void test_concurrent_find(uint64_t max_size, std::seed_seq &seed) {
   printf("found %lu elements\n", found.get());
 }
 
+template <class T>
+void test_concurrent_sum(uint64_t max_size, std::seed_seq &seed) {
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  std::set<T> serial_set;
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                    std::allocator<T>, false> serial_test_set;
+
+  for (uint32_t i = 0; i < max_size; i++) {
+    serial_set.insert(data[i]);
+    serial_test_set.insert(data[i]);
+  }
+  
+  uint64_t correct_sum = 0;
+  for(auto e : serial_set) {
+	  correct_sum += e;
+  }
+  auto serial_sum = serial_test_set.psum();
+  // printf("serial btree sum got %lu, should be %lu\n", serial_sum, correct_sum);
+  assert(serial_sum == correct_sum);
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true>
+      concurrent_set;
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_set.insert(data[i]);
+  }
+  auto concurrent_sum = concurrent_set.psum();
+  assert(concurrent_sum == correct_sum);
+  //printf("concurrent btree sum got %lu, should be %lu\n", concurrent_sum, correct_sum);
+}
+
+
+template <class T>
+void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials) {
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true>
+      concurrent_set;
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_set.insert(data[i]);
+  }
+  std::vector<uint64_t> psum_times(trials);
+  uint64_t start, end;
+  for(int i = 0; i < trials + 1; i++) {
+          start = get_usecs();
+          auto concurrent_sum = concurrent_set.psum();
+          end = get_usecs();
+
+          printf("concurrent btree sum got %lu\n", concurrent_sum);
+
+	  if(i > 0) {
+		  psum_times[i-1] = end - start;
+	  }
+  }
+  std::sort(psum_times.begin(), psum_times.end());
+  printf("plain btree psum time = %lu\n", psum_times[trials / 2]);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -176,8 +238,9 @@ int main(int argc, char *argv[]) {
   }
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
-
+  { test_concurrent_sum_time<uint64_t>(n, seed, trials); }
   { test_concurrent_find<uint64_t>(n, seed); }
+  { test_concurrent_sum<uint64_t>(n, seed); }
 
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> serial_remove_times;
