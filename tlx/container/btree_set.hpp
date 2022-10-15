@@ -477,6 +477,10 @@ public:
         }
     }
 
+    uint64_t psum() const {
+        return tree_.psum();
+    }
+
     //! Bulk load a sorted range [first,last). Loads items into leaves and
     //! constructs a B-tree above them. The tree must be empty when calling this
     //! function.

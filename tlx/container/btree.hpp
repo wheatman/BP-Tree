@@ -31,6 +31,8 @@
 #include <ParallelTools/reducer.h>
 #include <ParallelTools/Lock.hpp>
 
+#define PSUM_HEIGHT_CUTOFF 2
+
 namespace tlx {
 
 //! \addtogroup tlx_container
@@ -252,6 +254,7 @@ private:
         //! Pointers to children
         node* childid[inner_slotmax + 1]; // NOLINT
 
+
         //! Set variables to initial values.
         void initialize(const unsigned short l) {
             node::initialize(l);
@@ -276,6 +279,8 @@ private:
         bool is_underflow() const {
             return (node::slotuse < inner_slotmin);
         }
+
+
     };
 
     //! Extended structure of a leaf node in memory. Contains pairs of keys and
@@ -300,6 +305,8 @@ private:
             node::initialize(0);
             prev_leaf = next_leaf = nullptr;
         }
+
+
 
         //! Return key in slot s.
         const key_type& key(size_t s) const {
@@ -331,6 +338,7 @@ private:
             TLX_BTREE_ASSERT(slot < node::slotuse);
             slotdata[slot] = value;
         }
+
     };
 
     //! \}
@@ -1586,6 +1594,33 @@ public:
         return res;
     }
 
+    void psum_helper(const node* n, uint64_t* partial_sums) const {
+        if (n->is_leafnode())
+        {
+            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
+
+            for (unsigned short slot = 0; slot < leafnode->slotuse; ++slot)
+            {
+							partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->key(slot);
+            }
+        }
+        else
+        {
+            const InnerNode* innernode = static_cast<const InnerNode*>(n);
+		if (n->level > PSUM_HEIGHT_CUTOFF) {	
+			cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+			{
+					psum_helper(innernode->childid[slot], partial_sums);
+			}
+		} else {
+			for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+			{
+					psum_helper(innernode->childid[slot], partial_sums);
+			}
+		}
+        }
+    }
+ 
     //! Tries to locate a key in the B+ tree and returns an iterator to the
     //! key/data slot if found. If unsuccessful it returns end().
     iterator find(const key_type& key) {
@@ -1916,6 +1951,19 @@ public:
     }
 
     //! \}
+    // no locking, just sum
+    uint64_t psum() const {
+      const node* n = root_;
+      std::vector<uint64_t> partial_sums(ParallelTools::getWorkers() * 8);
+			if (n != nullptr) {
+      	psum_helper(n, partial_sums.data());
+			}
+      uint64_t sum = 0;
+      for(int i = 0; i < ParallelTools::getWorkers(); i++) {
+		sum += partial_sums[i * 8];
+      }
+      return sum;
+    }
 
 private:
     //! \name Private Insertion Functions
