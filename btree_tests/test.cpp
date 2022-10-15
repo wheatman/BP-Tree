@@ -88,16 +88,27 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
 #if CORRECTNESS
   bool wrong = false;
+  uint64_t correct_sum = 0;
   for(auto e : serial_set) {
     // might need to change if you get values because exists takes in a key
     if(!concurrent_set.exists(e)) {
       printf("insertion, didn't find %lu\n", e);
       wrong = true;
     }
+    correct_sum += e;
   }
   if (wrong) {
     return {false, 0, 0, 0, 0};
   }
+
+  /*
+  // test sum
+  uint64_t serial_test_sum = serial_test_set.psum();
+  ASSERT("serial sum got %lu, should be %lu\n", serial_test_sum, correct_sum);
+
+  uint64_t concurrent_test_sum = concurrent_set.psum();
+  ASSERT("concurrent sum got %lu, should be %lu\n", concurrent_sum, correct_sum);
+  */
 #endif
 
   std::vector<uint64_t> indxs_to_remove =
@@ -264,6 +275,48 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   return {true, serial_time, parallel_time, serial_remove_time, parallel_remove_time};
 }
 
+template <class T>
+void test_concurrent_sum(uint64_t max_size, std::seed_seq &seed) {
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  std::set<T> serial_set;
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                    std::allocator<T>, false> serial_test_set;
+
+  for (uint32_t i = 0; i < max_size; i++) {
+    serial_set.insert(data[i]);
+    serial_test_set.insert(data[i]);
+  }
+
+  uint64_t correct_sum = 0;
+  for(auto e : serial_set) {
+          correct_sum += e;
+  }
+  auto serial_sum = serial_test_set.psum_with_map();
+  printf("serial btree sum with map got %lu, should be %lu\n", serial_sum, correct_sum);
+  assert(serial_sum == correct_sum);
+  serial_sum = serial_test_set.psum_with_subtract();
+  printf("serial btree sum with subtract got %lu, should be %lu\n", serial_sum, correct_sum);
+  assert(serial_sum == correct_sum);
+
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true>
+      concurrent_set;
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_set.insert(data[i]);
+  }
+  auto concurrent_sum = concurrent_set.psum_with_map();
+  printf("concurrent btree sum with map got %lu, should be %lu\n", concurrent_sum, correct_sum);
+
+  assert(concurrent_sum == correct_sum);
+  concurrent_sum = concurrent_set.psum_with_subtract();
+  assert(concurrent_sum == correct_sum);
+  printf("concurrent btree sum with subtract got %lu, should be %lu\n", concurrent_sum, correct_sum);
+
+  //printf("concurrent btree sum got %lu, should be %lu\n", concurrent_sum, correct_sum);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -275,6 +328,10 @@ int main(int argc, char *argv[]) {
   }
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
+
+  { test_concurrent_sum<uint64_t>(n, seed); }
+
+  return 0; 
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> parallel_times;
   std::vector<uint64_t> serial_remove_times;
