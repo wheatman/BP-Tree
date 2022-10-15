@@ -39,6 +39,7 @@
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
+#define PSUM_HEIGHT_CUTOFF 2 
 namespace tlx {
 
 //! \addtogroup tlx_container
@@ -337,7 +338,6 @@ private:
 
         //! Return key in slot s.
         // TODO: is it possible even to have a const equiv for leafDS? 
-        // scary const_cast here
         const key_type& key(size_t s) const {
             return slotdata.get_key_at_sorted_index(s);
         }
@@ -1622,25 +1622,105 @@ public:
     //! Non-STL function checking whether a key is in the B+ tree. The same as
     //! (find(k) != end()) or (count() != 0).
     bool exists(const key_type& key) const {
+	int cpuid = 0;
+        ReaderWriterLock *parent_lock = nullptr;
+        if constexpr(concurrent) {
+            cpuid = sched_getcpu();
+            mutex.read_lock(cpuid);
+            parent_lock = &mutex;
+        }
         const node* n = root_;
-        if (!n) return false;
+        if (!n) {
+            if constexpr(concurrent) {
+                mutex.read_unlock(cpuid);
+            }
+            return false;
+        }
 
         while (!n->is_leafnode())
         {
             const InnerNode* inner = static_cast<const InnerNode*>(n);
+	    if constexpr(concurrent) {
+                inner->mutex_.read_lock(cpuid);
+                parent_lock->read_unlock(cpuid);
+                parent_lock = &(inner->mutex_);
+            }
             unsigned short slot = find_lower(inner, key);
 
             n = inner->childid[slot];
         }
 
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
+
+        if constexpr(concurrent) {
+            leaf->mutex_.lock();
+            parent_lock->read_unlock(cpuid);
+        }
+
 	// leaf->slotdata.print();
-	return leaf->slotdata.has(key);
+	auto res = leaf->slotdata.has(key);
+	if constexpr(concurrent) {
+            leaf->mutex_.unlock();
+        }
+	return res;
 	/*
         unsigned short slot = find_lower(leaf, key);
         return (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));
 	*/
+		}
+
+
+
+    void psum_helper_with_subtract(const node* n, uint64_t* partial_sums) const {
+        if (n->is_leafnode())
+        {
+            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
+
+            partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_direct();
+        }
+        else
+        {
+            const InnerNode* innernode = static_cast<const InnerNode*>(n);
+                if (n->level > PSUM_HEIGHT_CUTOFF) {
+                        cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+                        {
+                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
+                        }
+                } else {
+                        for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+                        {
+                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
+                        }
+                }
+        }
     }
+
+
+
+    void psum_helper_with_map(const node* n, uint64_t* partial_sums) const {
+        if (n->is_leafnode())
+        {
+            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
+
+            partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_with_map();
+        }
+        else
+        {
+            const InnerNode* innernode = static_cast<const InnerNode*>(n);
+                if (n->level > PSUM_HEIGHT_CUTOFF) {
+                        cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+                        {
+                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
+                        }
+                } else {
+                        for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+                        {
+                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
+                        }
+                }
+        }
+    }
+
 
     //! Tries to locate a key in the B+ tree and returns an iterator to the
     //! key/data slot if found. If unsuccessful it returns end().
@@ -1971,6 +2051,32 @@ public:
         }
     }
 
+
+    uint64_t psum_with_map() const {
+      const node* n = root_;
+      std::vector<uint64_t> partial_sums(ParallelTools::getWorkers() * 8);
+	if (n != nullptr) {
+		psum_helper_with_map(n, partial_sums.data());
+	}
+      uint64_t sum = 0;
+      for(int i = 0; i < ParallelTools::getWorkers(); i++) {
+                sum += partial_sums[i * 8];
+      }
+      return sum;
+    }
+
+    uint64_t psum_with_subtract() const {
+      const node* n = root_;
+      std::vector<uint64_t> partial_sums(ParallelTools::getWorkers() * 8);
+	if (n != nullptr) {
+		psum_helper_with_subtract(n, partial_sums.data());
+	}
+      uint64_t sum = 0;
+      for(int i = 0; i < ParallelTools::getWorkers(); i++) {
+                sum += partial_sums[i * 8];
+      }
+      return sum;
+    }
     //! \}
 
 private:
@@ -2742,8 +2848,10 @@ private:
 
             // TODO: leafDS function that gets max and second max?
             // Needed for case checks 
+            // something about calling the const version doesn't work here...
             key_type leaf_max, leaf_second_max;
             leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max, leaf->get_slotuse());
+            // leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
             // printf("largest")
             
             if constexpr (concurrent && optimism) {
@@ -2803,7 +2911,7 @@ private:
                     TLX_BTREE_ASSERT(leaf == root_);
                     TLX_BTREE_ASSERT(leaf->get_slotuse() == 0);
 
-                    printf("in empty root? \n\tleaf size = %lu \n", leaf->get_slotuse());
+                    printf("in empty root? \n\tleaf size = %hd \n", leaf->get_slotuse());
                     printf("was trying to delete elt = %lu \n", key);
                     // printf("tree stats:\n \t size = %lu\n \t leaves = %lu\n\t inner_nodes = %lu\n", stats_.size, stats_.leaves, stats_.inner_nodes);
 

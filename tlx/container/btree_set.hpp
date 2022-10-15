@@ -477,6 +477,13 @@ public:
         }
     }
 
+    uint64_t psum_with_map() const {
+        return tree_.psum_with_map();
+    }
+
+    uint64_t psum_with_subtract() const {
+        return tree_.psum_with_subtract();
+    }
     //! Bulk load a sorted range [first,last). Loads items into leaves and
     //! constructs a B-tree above them. The tree must be empty when calling this
     //! function.
