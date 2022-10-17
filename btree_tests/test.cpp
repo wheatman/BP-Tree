@@ -430,7 +430,7 @@ int main(int argc, char *argv[]) {
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
 
-  // { test_concurrent_sum<uint64_t>(n, seed); }
+  { test_concurrent_sum<uint64_t>(n, seed); }
 
   // return 0; 
   std::vector<uint64_t> serial_times;

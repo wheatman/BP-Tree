@@ -22,6 +22,7 @@
 #include <istream>
 #include <memory>
 #include <ostream>
+#include <type_traits>
 #include <utility>
 
 #include <mutex>
@@ -177,7 +178,31 @@ public:
     // tree.
     TLX_BTREE_FRIENDS;
 
-public:
+    template <typename T> struct pair_check {
+      using type = T;
+      using rest = T;
+      static constexpr bool is_pair = false;
+    };
+
+    template <typename T1, typename T2> struct pair_check<std::pair<T1, T2>> {
+      using type = T1;
+      using rest = T2;
+      static constexpr bool is_pair = true;
+    };
+
+    template <typename T> struct get_data_type {
+      using type = bool;
+    };
+
+    template <typename T1, typename T2> struct get_data_type<std::pair<T1, T2>> {
+      using type = T2;
+    };
+
+    static constexpr bool is_pair = pair_check<value_type>::is_pair;
+
+    using data_type = typename get_data_type<value_type>::type;
+
+  public:
     //! \name Constructed Types
     //! \{
 
@@ -299,19 +324,6 @@ private:
     //! data items. Key and data slots are kept together in value_type.
     struct LeafNode : public node {
 
-					template <typename T> struct pair_check { 
-						using type = T;
-						using rest = T;
-						static constexpr bool is_pair = false;
-					};
-
-					template <typename T1, typename T2> struct pair_check<std::pair<T1, T2>> {
-						using type = T1;
-						using rest = T2;
-						static constexpr bool is_pair = true;
-					};
-
-					static constexpr bool is_pair = pair_check<value_type>::is_pair;
 
 				using leafDS_type = typename std::conditional<is_pair, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type, typename pair_check<value_type>::rest>, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type>>::type;
         
@@ -1669,7 +1681,7 @@ public:
 	*/
 		}
 
-    typename std::tuple_element<1, value_type>::type value(const key_type& key) const {
+    data_type value(const key_type& key) const {
 	    int cpuid = 0;
         ReaderWriterLock *parent_lock = nullptr;
         if constexpr(concurrent) {
