@@ -1669,6 +1669,54 @@ public:
 	*/
 		}
 
+    typename std::tuple_element<1, value_type>::type value(const key_type& key) const {
+	    int cpuid = 0;
+        ReaderWriterLock *parent_lock = nullptr;
+        if constexpr(concurrent) {
+            cpuid = sched_getcpu();
+            mutex.read_lock(cpuid);
+            parent_lock = &mutex;
+        }
+        const node* n = root_;
+        if (!n) {
+            if constexpr(concurrent) {
+                mutex.read_unlock(cpuid);
+            }
+            return {};
+        }
+
+        while (!n->is_leafnode())
+        {
+            const InnerNode* inner = static_cast<const InnerNode*>(n);
+	    if constexpr(concurrent) {
+                inner->mutex_.read_lock(cpuid);
+                parent_lock->read_unlock(cpuid);
+                parent_lock = &(inner->mutex_);
+            }
+            unsigned short slot = find_lower(inner, key);
+
+            n = inner->childid[slot];
+        }
+
+        const LeafNode* leaf = static_cast<const LeafNode*>(n);
+
+        if constexpr(concurrent) {
+            leaf->mutex_.lock();
+            parent_lock->read_unlock(cpuid);
+        }
+
+	// leaf->slotdata.print();
+	auto res = leaf->slotdata.value(key);
+	if constexpr(concurrent) {
+            leaf->mutex_.unlock();
+        }
+	return res;
+	/*
+        unsigned short slot = find_lower(leaf, key);
+        return (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));
+	*/
+	}
+
 
 
     void psum_helper_with_subtract(const node* n, uint64_t* partial_sums) const {
