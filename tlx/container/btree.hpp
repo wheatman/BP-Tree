@@ -2763,7 +2763,7 @@ public:
 
     //! Erases one (the first) of the key/data pairs associated with the given
     //! key.
-    template <bool optimism = false>
+    template <bool optimism = true>
     bool erase_one(const key_type& key, int cpu_id = -1) {
         TLX_BTREE_PRINT("BTree::erase_one(" << key <<
                         ") on btree size " << size());
@@ -2781,7 +2781,14 @@ public:
 
         if (self_verify) verify();
 
-        if (!root_) return false;
+        if (!root_) {
+            if constexpr (optimism) {
+                mutex.read_unlock(cpu_id);
+            } else {
+                mutex.write_unlock();
+            }
+            return false;
+        }
 
         auto lock_p = &mutex;
         auto [result, try_again] =
@@ -2925,8 +2932,11 @@ private:
                     return {{}, true};
                 }
             }
+            bool about_to_underflow = leaf->soon_underflow();
 
             leaf->slotdata.remove(key);
+
+            assert(about_to_underflow == leaf->is_underflow());
             // std::copy(leaf->slotdata + slot + 1, leaf->slotdata + leaf->slotuse,
             //           leaf->slotdata + slot);
             // leaf->slotuse--; 
@@ -2960,7 +2970,7 @@ private:
                 }
             }
 
-            if (leaf->is_underflow() && !(leaf == root_ && leaf->get_slotuse() >= 1))
+            if (about_to_underflow && !(leaf == root_ && leaf->get_slotuse() >= 1))
             {
                 // determine what to do about the underflow
 
