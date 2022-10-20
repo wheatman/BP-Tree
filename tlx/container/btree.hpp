@@ -3785,6 +3785,9 @@ private:
 
         // copy the first items from the right node to the last slot in the left
         // node.
+        if (concurrent) {
+            right->mutex_.lock();
+        }
 
         // TODO: leafDS shift_left, should copy right-> end of left then shift right elems over
         left->slotdata.shift_left(&(right->slotdata), shiftnum);
@@ -3803,6 +3806,9 @@ private:
         left->manual_slotuse += shiftnum;
         right->manual_slotuse -= shiftnum;
 #endif
+        if (concurrent) {
+            right->mutex_.unlock();
+        }
 
         key_type maxkey, secondmaxkey;
         left->slotdata.get_max_2(&maxkey, &secondmaxkey);
@@ -3926,11 +3932,11 @@ private:
         TLX_BTREE_ASSERT(right->slotuse + shiftnum < leaf_slotmax);
 
         // TODO: leafDS shift_right, should shift right over to make room first then copy left -> right
-#if MANUAL_GET_NUM_ELTS
+
+        if (concurrent) {
+            left->mutex_.lock();
+        }
         right->slotdata.shift_right(&(left->slotdata), shiftnum);
-#else
-        right->slotdata.shift_right(&(left->slotdata), shiftnum);
-#endif
         // std::copy_backward(right->slotdata, right->slotdata + right->slotuse,
         //                    right->slotdata + right->slotuse + shiftnum);
 
@@ -3948,6 +3954,9 @@ private:
         right->manual_slotuse += shiftnum;
         left->manual_slotuse -= shiftnum;
 #endif
+        if (concurrent) {
+            left->mutex_.unlock();
+        }
         // parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
 
         key_type maxkey, secondmaxkey;
