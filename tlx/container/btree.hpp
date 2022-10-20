@@ -2917,26 +2917,28 @@ private:
             // Needed for case checks 
             // something about calling the const version doesn't work here...
             key_type leaf_max, leaf_second_max;
-            leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max, leaf->get_slotuse());
+            leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
             // leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
             // printf("largest")
             
+            bool about_to_underflow = leaf->soon_underflow();
+            bool key_equal_check = key_equal(key, leaf_max);
+
             if constexpr (concurrent && optimism) {
                 // need to check if key is largest val in leaf
-                if (key_equal(key, leaf_max)) {
+                if (key_equal_check) {
                     leaf->mutex_.unlock();
                     return {{}, true};
                 }
-                if (leaf->soon_underflow()) {
+                if (about_to_underflow) {
                     leaf->mutex_.unlock();
                     return {{}, true};
                 }
             }
-            bool about_to_underflow = leaf->soon_underflow();
 
             leaf->slotdata.remove(key);
 
-            assert(about_to_underflow == leaf->is_underflow());
+            // assert(about_to_underflow == leaf->is_underflow());
             // std::copy(leaf->slotdata + slot + 1, leaf->slotdata + leaf->slotuse,
             //           leaf->slotdata + slot);
             // leaf->slotuse--; 
@@ -2947,10 +2949,13 @@ private:
 
             // if the last key of the leaf was changed, the parent is notified
             // and updates the key of this leaf
-            if (key_equal(key, leaf_max))
+            if (key_equal_check)
             {
                 if (parent && parentslot < parent->slotuse)
                 {
+                    if (concurrent && optimism) {
+                        printf("bad optimism 1\n");
+                    }
                     TLX_BTREE_ASSERT(parent->childid[parentslot] == curr);
                     parent->slotkey[parentslot] = leaf_second_max;
                 }
@@ -2959,7 +2964,7 @@ private:
                     if (leaf->get_slotuse() >= 1)
                     {
                         TLX_BTREE_PRINT("Scheduling lastkeyupdate: key " <<
-                                        leaf->key(leaf->get_slotuse() - 1));
+                                        leaf->key(leaf_second_max - 1));
                         myres |= result_t(
                             btree_update_lastkey, leaf_second_max);
                     }
@@ -2972,12 +2977,18 @@ private:
 
             if (about_to_underflow && !(leaf == root_ && leaf->get_slotuse() >= 1))
             {
+                if (concurrent && optimism) {
+                    printf("bad optimism 2\n");
+                }
                 // determine what to do about the underflow
 
                 // case : if this empty leaf is the root, then delete all nodes
                 // and set root to nullptr.
                 if (left_leaf == nullptr && right_leaf == nullptr)
                 {
+                    if (concurrent && optimism) {
+                        printf("\tbad optimism 2a\n");
+                    }
                     TLX_BTREE_ASSERT(leaf == root_);
                     TLX_BTREE_ASSERT(leaf->get_slotuse() == 0);
 
@@ -3006,6 +3017,9 @@ private:
                 else if ((left_leaf == nullptr || left_leaf->is_few()) &&
                          (right_leaf == nullptr || right_leaf->is_few()))
                 {
+                    if (concurrent && optimism) {
+                        printf("\tbad optimism 2b\n");
+                    }
                     if (left_parent == parent)
                         myres |= merge_leaves(left_leaf, leaf, left_parent);
                     else
@@ -3016,6 +3030,9 @@ private:
                 else if ((left_leaf != nullptr && left_leaf->is_few()) &&
                          (right_leaf != nullptr && !right_leaf->is_few()))
                 {
+                    if (concurrent && optimism) {
+                        printf("\tbad optimism 2c\n");
+                    }
                     if (right_parent == parent)
                         myres |= shift_left_leaf(
                             leaf, right_leaf, right_parent, parentslot);
@@ -3027,6 +3044,9 @@ private:
                 else if ((left_leaf != nullptr && !left_leaf->is_few()) &&
                          (right_leaf != nullptr && right_leaf->is_few()))
                 {
+                    if (concurrent && optimism) {
+                        printf("\tbad optimism 2d\n");
+                    }
                     if (left_parent == parent)
                         shift_right_leaf(
                             left_leaf, leaf, left_parent, parentslot - 1);
@@ -3037,6 +3057,9 @@ private:
                 // parent, choose the leaf with more data
                 else if (left_parent == right_parent)
                 {
+                    if (concurrent && optimism) {
+                        printf("\tbad optimism 2e\n");
+                    }
                     if (left_leaf->get_slotuse() <= right_leaf->get_slotuse())
                         myres |= shift_left_leaf(
                             leaf, right_leaf, right_parent, parentslot);
@@ -3046,6 +3069,9 @@ private:
                 }
                 else
                 {
+                    if (concurrent && optimism) {
+                        printf("\tbad optimism 2f\n");
+                    }
                     if (left_parent == parent)
                         shift_right_leaf(
                             left_leaf, leaf, left_parent, parentslot - 1);
@@ -3131,6 +3157,9 @@ private:
             {
                 if (parent && parentslot < parent->slotuse)
                 {
+                    if (concurrent && optimism) {
+                        printf("bad optimism 3\n");
+                    }
                     TLX_BTREE_PRINT("Fixing lastkeyupdate: key " <<
                                     result.lastkey << " into parent " <<
                                     parent << " at parentslot " <<
@@ -3149,6 +3178,9 @@ private:
 
             if (result.has(btree_fixmerge))
             {
+                if (concurrent && optimism) {
+                    printf("bad optimism 4\n");
+                }
                 // either the current node or the next is empty and should be
                 // removed
                 if (inner->childid[slot]->get_slotuse() != 0)
@@ -3175,13 +3207,20 @@ private:
                     slot--;
                     LeafNode* child =
                         static_cast<LeafNode*>(inner->childid[slot]);
-                    inner->slotkey[slot] = child->key(child->get_slotuse() - 1);
+                    // inner->slotkey[slot] = child->key(child->get_slotuse() - 1);
+
+                    key_type child_max, child_second_max;
+                    child->slotdata.get_max_2(&child_max, &child_second_max);
+                    inner->slotkey[slot] = child_max;
                 }
             }
 
             if (inner->is_underflow() &&
                 !(inner == root_ && inner->slotuse >= 1))
             {
+                if (concurrent && optimism) {
+                    printf("bad optimism 5\n");
+                }
                 // case: the inner node is the root and has just one child. that
                 // child becomes the new root
                 if (left_inner == nullptr && right_inner == nullptr)
@@ -3735,6 +3774,7 @@ private:
         TLX_BTREE_ASSERT(left->get_slotuse() < right->get_slotuse());
         TLX_BTREE_ASSERT(parent->childid[parentslot] == left);
 
+        assert(left->get_slotuse() < right->get_slotuse());
         unsigned int shiftnum = (right->get_slotuse() - left->get_slotuse()) >> 1;
 
         TLX_BTREE_PRINT("Shifting (leaf) " << shiftnum << " entries to left " <<
@@ -3764,13 +3804,18 @@ private:
         right->manual_slotuse -= shiftnum;
 #endif
 
+        key_type maxkey, secondmaxkey;
+        left->slotdata.get_max_2(&maxkey, &secondmaxkey);
+
         // fixup parent
         if (parentslot < parent->slotuse) {
-            parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
+            // parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
+
+            parent->slotkey[parentslot] = maxkey;
             return btree_ok;
         }
         else {  // the update is further up the tree
-            return result_t(btree_update_lastkey, left->key(left->get_slotuse() - 1));
+            return result_t(btree_update_lastkey, maxkey);
         }
     }
 
@@ -3853,6 +3898,7 @@ private:
 
         TLX_BTREE_ASSERT(left->get_slotuse() > right->get_slotuse());
 
+        assert(left->get_slotuse() > right->get_slotuse());
         unsigned int shiftnum = (left->get_slotuse() - right->get_slotuse()) >> 1;
 
         TLX_BTREE_PRINT("Shifting (leaf) " << shiftnum <<
@@ -3881,7 +3927,7 @@ private:
 
         // TODO: leafDS shift_right, should shift right over to make room first then copy left -> right
 #if MANUAL_GET_NUM_ELTS
-        right->slotdata.shift_right(&(left->slotdata), shiftnum, left->manual_slotuse);
+        right->slotdata.shift_right(&(left->slotdata), shiftnum);
 #else
         right->slotdata.shift_right(&(left->slotdata), shiftnum);
 #endif
@@ -3902,7 +3948,11 @@ private:
         right->manual_slotuse += shiftnum;
         left->manual_slotuse -= shiftnum;
 #endif
-        parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
+        // parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
+
+        key_type maxkey, secondmaxkey;
+        left->slotdata.get_max_2(&maxkey, &secondmaxkey);
+        parent->slotkey[parentslot] = maxkey;
     }
 
     //! Balance two inner nodes. The function moves key/data pairs from left to
