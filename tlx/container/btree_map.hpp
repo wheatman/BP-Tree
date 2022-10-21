@@ -35,7 +35,8 @@ template <typename Key_, typename Data_,
           typename Compare_ = std::less<Key_>,
           typename Traits_ =
               btree_default_traits<Key_, std::pair<Key_, Data_> >,
-          typename Alloc_ = std::allocator<std::pair<Key_, Data_> > >
+          typename Alloc_ = std::allocator<std::pair<Key_, Data_> >,
+          bool concurrent = false>
 class btree_map
 {
 public:
@@ -73,7 +74,7 @@ public:
 
     //! Typedef of our own type
     typedef btree_map<key_type, data_type, key_compare,
-                      traits, allocator_type> self;
+                      traits, allocator_type, concurrent> self;
 
     //! Construct the STL-required value_type as a composition pair of key and
     //! data types
@@ -87,7 +88,7 @@ public:
 
     //! Implementation type of the btree_base
     typedef BTree<key_type, value_type, key_of_value, key_compare,
-                  traits, false, allocator_type> btree_impl;
+                  traits, false, allocator_type, concurrent> btree_impl;
 
     //! Function class comparing two value_type pairs.
     typedef typename btree_impl::value_compare value_compare;
@@ -335,6 +336,10 @@ public:
     //! (find(k) != end()) or (count() != 0).
     bool exists(const key_type& key) const {
         return tree_.exists(key);
+    }
+
+    auto value(const key_type& key) const {
+        return tree_.value(key);
     }
 
     //! Tries to locate a key in the B+ tree and returns an iterator to the

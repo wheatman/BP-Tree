@@ -169,6 +169,30 @@ public:
     // tree.
     TLX_BTREE_FRIENDS;
 
+    template <typename T> struct pair_check {
+      using type = T;
+      using rest = T;
+      static constexpr bool is_pair = false;
+    };
+
+    template <typename T1, typename T2> struct pair_check<std::pair<T1, T2>> {
+      using type = T1;
+      using rest = T2;
+      static constexpr bool is_pair = true;
+    };
+
+    template <typename T> struct get_data_type {
+      using type = bool;
+    };
+
+    template <typename T1, typename T2> struct get_data_type<std::pair<T1, T2>> {
+      using type = T2;
+    };
+
+    static constexpr bool is_pair = pair_check<value_type>::is_pair;
+
+    using data_type = typename get_data_type<value_type>::type;
+
 public:
     //! \name Constructed Types
     //! \{
@@ -1592,6 +1616,62 @@ public:
             leaf->mutex_.unlock();
         }
         return res;
+    }
+
+    data_type value(const key_type &key) const {
+      int cpuid = 0;
+      ReaderWriterLock *parent_lock = nullptr;
+      if constexpr (concurrent) {
+        cpuid = sched_getcpu();
+        mutex.read_lock(cpuid);
+        parent_lock = &mutex;
+      }
+      const node *n = root_;
+      if (!n) {
+        if constexpr (concurrent) {
+          mutex.read_unlock(cpuid);
+        }
+        return {};
+      }
+      while (!n->is_leafnode()) {
+        const InnerNode *inner = static_cast<const InnerNode *>(n);
+        if constexpr (concurrent) {
+          inner->mutex_.read_lock(cpuid);
+          parent_lock->read_unlock(cpuid);
+          parent_lock = &(inner->mutex_);
+        }
+        unsigned short slot = find_lower(inner, key);
+        n = inner->childid[slot];
+      }
+      const LeafNode *leaf = static_cast<const LeafNode *>(n);
+      if constexpr (concurrent) {
+        leaf->mutex_.lock();
+        parent_lock->read_unlock(cpuid);
+      }
+      // leaf->slotdata.print();
+      unsigned short slot = find_lower(leaf, key);
+      if (key_equal(key, leaf->key(slot))) {
+        if constexpr (!is_pair) {
+          if constexpr (concurrent) {
+            leaf->mutex_.unlock();
+          }
+          return true;
+        } else {
+          auto res = leaf->slotdata[slot].second;
+          if constexpr (concurrent) {
+            leaf->mutex_.unlock();
+          }
+          return res;
+        }
+      }
+      if constexpr (concurrent) {
+        leaf->mutex_.unlock();
+      }
+      return {};
+      /*
+      unsigned short slot = find_lower(leaf, key);
+      return (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));
+      */
     }
 
     void psum_helper(const node* n, uint64_t* partial_sums) const {

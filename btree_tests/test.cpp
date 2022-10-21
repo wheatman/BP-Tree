@@ -5,9 +5,11 @@
 #include <sys/time.h>
 #include <vector>
 #include <set>
+#include <map>
 #include <ParallelTools/parallel.h>
 
 #include <tlx/container/btree_set.hpp>
+#include "tlx/container/btree_map.hpp"
 
 #if CILK != 1
 #define cilk_for for
@@ -227,6 +229,104 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
   printf("plain btree psum time = %lu\n", psum_times[trials / 2]);
 }
 
+template <class T>
+std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
+test_concurrent_btreemap(uint64_t max_size, std::seed_seq &seed) {
+  // std::vector<T> data =
+  //     create_random_data<T>(max_size, 10000, seed);
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+
+  for(uint32_t i = 0; i < max_size; i++) {
+    data[i]++; // no zeroes
+  }
+  uint64_t start, end;
+#if CORRECTNESS
+  std::map<T, T> serial_map;
+  std::vector<std::pair<T, T>> inserted_elts;
+
+  start = get_usecs();
+  for (uint32_t i = 0; i < max_size; i++) {
+    // if (std::count(serial_set.begin(), serial_set.end(), data[i])) {
+    //   printf("inserting twice %lu\n", data[i]);
+    //   duplicated_elts.insert(data[i]);
+    // }
+    serial_map.insert({data[i], 2*data[i]});
+  }
+  printf("%lu unique elements\n", serial_map.size());
+  end = get_usecs();
+
+  for (auto e: serial_map) {
+    inserted_elts.push_back(e);
+  }
+  // int64_t serial_time = end - start;
+  // printf("inserted all the data serially in %lu\n", end - start);
+#endif
+
+  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, false>
+      serial_test_map;
+  start = get_usecs();
+  for(uint32_t i = 0; i < max_size; i++) {
+    serial_test_map.insert({data[i], 2*data[i]});
+  }
+  end = get_usecs();
+  uint64_t serial_time = end - start;
+  printf("\tinserted %lu elts serially in %lu\n", max_size, end - start);
+
+  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true>
+      concurrent_map;
+  start = get_usecs();
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_map.insert({data[i], 2*data[i]});
+  }
+  end = get_usecs();
+  uint64_t parallel_time = end - start;
+  printf("\tinserted %lu elts concurrently in %lu\n", max_size, end - start);
+
+#if CORRECTNESS
+  bool wrong = false;
+  uint64_t correct_sum = 0;
+  // check serial
+  for(auto e : serial_map) {
+    // might need to change if you get values because exists takes in a key
+    if(!serial_test_map.exists(e.first)) {
+      printf("insertion, didn't find key %lu\n", e.first);
+      wrong = true;
+    }
+    if (serial_test_map.value(e.first) != e.second) {
+      printf("got the wrong value for key %lu, got %lu, expected %lu ", e.first, serial_test_map.value(e.first), e.second);
+    }
+    correct_sum += e.first;
+  }
+  // check concurrent
+  for(auto e : serial_map) {
+    // might need to change if you get values because exists takes in a key
+    if(!concurrent_map.exists(e.first)) {
+      printf("insertion, didn't find key %lu\n", e.first);
+      wrong = true;
+    }
+    if (concurrent_map.value(e.first) != e.second) {
+      printf("got the wrong value for key %lu, got %lu, expected %lu ", e.first, concurrent_map.value(e.first), e.second);
+    }
+  }
+  if (wrong) {
+    return {false, 0, 0, 0, 0};
+  }
+
+  /*
+  // test sum
+  uint64_t serial_test_sum = serial_test_set.psum();
+  ASSERT("serial sum got %lu, should be %lu\n", serial_test_sum, correct_sum);
+  uint64_t concurrent_test_sum = concurrent_set.psum();
+  ASSERT("concurrent sum got %lu, should be %lu\n", concurrent_sum, correct_sum);
+  */
+#endif
+
+  return {true, serial_time, parallel_time, 0, 0};
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -238,9 +338,9 @@ int main(int argc, char *argv[]) {
   }
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
-  { test_concurrent_sum_time<uint64_t>(n, seed, trials); }
-  { test_concurrent_find<uint64_t>(n, seed); }
-  { test_concurrent_sum<uint64_t>(n, seed); }
+  // { test_concurrent_sum_time<uint64_t>(n, seed, trials); }
+  // { test_concurrent_find<uint64_t>(n, seed); }
+  // { test_concurrent_sum<uint64_t>(n, seed); }
 
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> serial_remove_times;
@@ -248,7 +348,7 @@ int main(int argc, char *argv[]) {
   std::vector<uint64_t> parallel_remove_times;
   for (int i = 0; i < trials + 1; i++) {
     auto [correct, serial, parallel, serial_remove, parallel_remove] =
-        test_concurrent_btreeset<unsigned long>(n, seed);
+        test_concurrent_btreemap<unsigned long>(n, seed);
     if (!correct) {
       printf("got the wrong answer\n");
       return -1;
