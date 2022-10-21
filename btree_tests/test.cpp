@@ -40,7 +40,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
   uint64_t start, end, serial_time;
 
-#if DEBUG
+// #if DEBUG
   tlx::btree_set<T> serial_set;
   start = get_usecs();
   for (uint32_t i = 0; i < max_size; i++) {
@@ -49,7 +49,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   end = get_usecs();
   serial_time = end - start;
   printf("inserted all the data serially in %lu\n", end - start);
-#endif
+// #endif
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                  std::allocator<T>, false>
       serial_test_set;

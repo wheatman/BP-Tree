@@ -2691,10 +2691,10 @@ int cpu_id) {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
             if constexpr (concurrent) {
                 leaf->mutex_.lock();
-                if constexpr (optimism) {
-                    (*parent_lock)->read_unlock(cpu_id);
-                    *parent_lock = nullptr;
-                }
+                // if constexpr (optimism) {
+                //     (*parent_lock)->read_unlock(cpu_id);
+                //     *parent_lock = nullptr;
+                // }
             }
             LeafNode* left_leaf = static_cast<LeafNode*>(left);
             LeafNode* right_leaf = static_cast<LeafNode*>(right);
@@ -2892,6 +2892,9 @@ int cpu_id) {
                 inner, slot, &lock_p, cpu_id);
             if constexpr (concurrent && optimism) {
               if (try_again) {
+                if (lock_p) {
+                    lock_p->read_unlock(cpu_id);
+                }
                 return {{}, true};
               }
             }
@@ -2900,9 +2903,15 @@ int cpu_id) {
 
             if (result.has(btree_not_found))
             {
-                if (concurrent && !optimism) {
-                    inner->mutex_.write_unlock();
-                }
+                if (concurrent) {
+                    if (!optimism) {
+                        inner->mutex_.write_unlock();
+                    } else {
+                        if (lock_p) {
+                            lock_p->read_unlock(cpu_id);
+                        }
+                    }
+                } 
                 return {result, false};
             }
 
@@ -2972,9 +2981,15 @@ int cpu_id) {
 
                     inner->slotuse = 0;
                     free_node(inner);
-                    if (concurrent && !optimism) {
-                        inner->mutex_.write_unlock();
-                    }
+                    if (concurrent) {
+                        if (!optimism) {
+                            inner->mutex_.write_unlock();
+                        } else {
+                            if (lock_p) {
+                                lock_p->read_unlock(cpu_id);
+                            }
+                        }
+                    } 
                     return {btree_ok, false};
                 }
                 // case : if both left and right leaves would underflow in case
@@ -3035,9 +3050,15 @@ int cpu_id) {
                             inner, right_inner, right_parent, parentslot);
                 }
             }
-            if (concurrent && !optimism) {
-                inner->mutex_.write_unlock();
-            }
+            if (concurrent) {
+                if (!optimism) {
+                    inner->mutex_.write_unlock();
+                } else {
+                    if (lock_p) {
+                        lock_p->read_unlock(cpu_id);
+                    }
+                }
+            } 
             return {myres, false};
         }
     }
@@ -3516,6 +3537,10 @@ int cpu_id) {
         // copy the first items from the right node to the last slot in the left
         // node.
 
+        if (concurrent) {
+            right->mutex_.lock();
+        }
+
         std::copy(right->slotdata, right->slotdata + shiftnum,
                   left->slotdata + left->slotuse);
 
@@ -3528,6 +3553,9 @@ int cpu_id) {
 
         right->slotuse -= shiftnum;
 
+        if (concurrent) {
+            right->mutex_.unlock();
+        }
         // fixup parent
         if (parentslot < parent->slotuse) {
             parent->slotkey[parentslot] = left->key(left->slotuse - 1);
@@ -3638,6 +3666,9 @@ int cpu_id) {
 
             TLX_BTREE_ASSERT(leftslot == parentslot);
         }
+        if (concurrent) {
+            left->mutex_.lock();
+        }
 
         // shift all slots in the right node
 
@@ -3655,6 +3686,9 @@ int cpu_id) {
                   right->slotdata);
 
         left->slotuse -= shiftnum;
+        if (concurrent) {
+            left->mutex_.unlock();
+        }
 
         parent->slotkey[parentslot] = left->key(left->slotuse - 1);
     }
