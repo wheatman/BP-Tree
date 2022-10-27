@@ -214,14 +214,14 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   std::vector<uint64_t> range_query_end_idxs =
       create_random_data<uint64_t>(checker_sorted.size() / 2, checker_sorted.size(), seed);
 
-  std::vector<T> correct_range_query_sums;
-  std::vector<uint64_t> correct_range_query_counts;
+  std::vector<T> correct_range_query_sums(range_query_start_idxs.size());
+  std::vector<uint64_t> correct_range_query_counts(range_query_start_idxs.size());
 
-  std::vector<T> serial_range_query_sums;
-  std::vector<uint64_t> serial_range_query_counts;
+  std::vector<T> serial_range_query_sums(range_query_start_idxs.size());
+  std::vector<uint64_t> serial_range_query_counts(range_query_start_idxs.size());
 
-  std::vector<T> concurrent_range_query_sums;
-  std::vector<uint64_t> concurrent_range_query_counts;
+  std::vector<T> concurrent_range_query_sums(range_query_start_idxs.size());
+  std::vector<uint64_t> concurrent_range_query_counts(range_query_start_idxs.size());
 
   T start, end;
 
@@ -243,7 +243,9 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
       correct_range_query_sums[i] += checker_sorted[j];
     }
   }
-  printf("\t did %lu correct range queries\n", range_query_start_idxs.size());
+  printf("\t did %lu correct range queries with avg query size %lu\n", 
+        range_query_start_idxs.size(),
+        std::accumulate(correct_range_query_counts.begin(), correct_range_query_counts.end(), 0.0) / correct_range_query_counts.size());
 
   start_time = get_usecs();
   // serial btree range sums
@@ -312,6 +314,89 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
     }
     if (correct_range_query_counts[i] != concurrent_range_query_counts[i]) {
       printf("wrong range query count, expected %lu, got %lu\n", correct_range_query_counts[i], concurrent_range_query_counts[i]);
+      wrong = true;
+    }
+  }
+  if (wrong) {
+    return {false, 0, 0, 0, 0};
+  } 
+
+  // *** testing map_range_length ***
+
+  std::vector<T> serial_range_query_length_sums(range_query_start_idxs.size());
+  std::vector<uint64_t> serial_range_query_length_counts(range_query_start_idxs.size());
+
+  std::vector<T> concurrent_range_query_length_sums(range_query_start_idxs.size());
+  std::vector<uint64_t> concurrent_range_query_length_counts(range_query_start_idxs.size());
+
+  start_time = get_usecs();
+  // serial btree range sums
+  for (uint32_t i = 0; i < range_query_start_idxs.size(); i++) {
+    start = data[range_query_start_idxs[i]];
+    end = data[range_query_end_idxs[i]];
+    if (start > end) {
+      std::swap(start, end);
+    }
+    uint64_t num_in_range = 0;
+    uint64_t sum_in_range = 0;
+    serial_set.map_range_length(start, correct_range_query_counts[i], [&num_in_range, &sum_in_range]([[maybe_unused]] auto el) {
+              num_in_range += 1;
+              sum_in_range += el;
+            });
+    // printf("hi ");
+    serial_range_query_length_counts[i] = num_in_range;
+    serial_range_query_length_sums[i] = sum_in_range;
+  }
+  end_time = get_usecs();
+  serial_time = end_time - start_time;
+  printf("\t did %lu range queries by length serially in %lu\n", range_query_start_idxs.size(), serial_time);
+
+  // correctness check of serial 
+  wrong = false;
+  for (size_t i = 0; i < correct_range_query_sums.size(); i++) {
+    if (correct_range_query_sums[i] != serial_range_query_length_sums[i]) {
+      printf("wrong range query sum, expected %lu, got %lu\n", correct_range_query_sums[i], serial_range_query_length_sums[i]);
+      wrong = true;
+    }
+    if (correct_range_query_counts[i] != serial_range_query_length_counts[i]) {
+      printf("wrong range query count, expected %lu, got %lu\n", correct_range_query_counts[i], serial_range_query_length_counts[i]);
+      wrong = true;
+    }
+  }
+  if (wrong) {
+    return {false, 0, 0, 0, 0};
+  } 
+
+  start_time = get_usecs();
+  // concurrent btree range sums
+  cilk_for (uint32_t i = 0; i < range_query_start_idxs.size(); i++) {
+    start = data[range_query_start_idxs[i]];
+    end = data[range_query_end_idxs[i]];
+    if (start > end) {
+      std::swap(start, end);
+    }
+    uint64_t num_in_range = 0;
+    uint64_t sum_in_range = 0;
+    concurrent_set.map_range_length(start, correct_range_query_counts[i], [&num_in_range, &sum_in_range]([[maybe_unused]] auto el) {
+              num_in_range += 1;
+              sum_in_range += el;
+            });
+    concurrent_range_query_length_counts[i] = num_in_range;
+    concurrent_range_query_length_sums[i] = sum_in_range;
+  }
+  end_time = get_usecs();
+  concurrent_time = end_time - start_time;
+  printf("\t did %lu range queries by length concurrently in %lu\n", range_query_start_idxs.size(), concurrent_time);
+
+  // correctness check of concurrent 
+  wrong = false;
+  for (size_t i = 0; i < correct_range_query_sums.size(); i++) {
+    if (correct_range_query_sums[i] != concurrent_range_query_length_sums[i]) {
+      printf("wrong range query sum, expected %lu, got %lu\n", correct_range_query_sums[i], concurrent_range_query_length_sums[i]);
+      wrong = true;
+    }
+    if (correct_range_query_counts[i] != concurrent_range_query_length_counts[i]) {
+      printf("wrong range query count, expected %lu, got %lu\n", correct_range_query_counts[i], concurrent_range_query_length_counts[i]);
       wrong = true;
     }
   }
