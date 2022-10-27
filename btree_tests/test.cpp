@@ -307,12 +307,12 @@ void test_concurrent_sum_correctness(uint64_t max_size, std::seed_seq &seed) {
     concurrent_set.insert(data[i]);
   }
   auto concurrent_sum = concurrent_set.psum_with_map();
-  printf("concurrent btree sum with map got %lu, should be %lu\n", concurrent_sum, correct_sum);
+  printf("\tconcurrent btree sum with map got %lu, should be %lu\n", concurrent_sum, correct_sum);
 
   assert(concurrent_sum == correct_sum);
   concurrent_sum = concurrent_set.psum_with_subtract();
   assert(concurrent_sum == correct_sum);
-  printf("concurrent btree sum with subtract got %lu, should be %lu\n", concurrent_sum, correct_sum);
+  printf("\tconcurrent btree sum with subtract got %lu, should be %lu\n", concurrent_sum, correct_sum);
 
   //printf("concurrent btree sum got %lu, should be %lu\n", concurrent_sum, correct_sum);
 }
@@ -323,36 +323,44 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
 
-  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
-                 std::allocator<T>, true>
-      concurrent_set;
-  cilk_for(uint32_t i = 0; i < max_size; i++) {
-    concurrent_set.insert(data[i]);
-  }
-
+  std::vector<uint64_t> insert_times(trials);
   std::vector<uint64_t> with_map_times(trials);
   std::vector<uint64_t> with_subtract_times(trials);
-  uint64_t start, end, map_time, subtract_time;
+  uint64_t start, end, map_time, subtract_time, insert_time;
   for(int i = 0; i < trials + 1; i++) {
+	  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+			 std::allocator<T>, false>
+	      concurrent_set;
+	  start = get_usecs();
+	  for(uint32_t i = 0; i < max_size; i++) {
+	    concurrent_set.insert(data[i]);
+	  }
+	  end = get_usecs();
+	  insert_time = end - start;
+
+
 	  start = get_usecs();
 	  auto concurrent_sum = concurrent_set.psum_with_map();
 	  end = get_usecs();
 	  map_time = end - start;
 	  
-	  printf("concurrent btree sum with map got %lu\n", concurrent_sum);
+	  printf("\tconcurrent btree sum with map got %lu\n", concurrent_sum);
 
 	  start = get_usecs();
 	  concurrent_sum = concurrent_set.psum_with_subtract();
 	  end = get_usecs();
 	  subtract_time = end - start;
-	  printf("concurrent btree sum with subtract got %lu\n", concurrent_sum);
+	  printf("\tconcurrent btree sum with subtract got %lu\n", concurrent_sum);
 		  if(i > 0) {
+			  insert_times[i-1] = insert_time;
 			  with_map_times[i-1] = map_time;
 			  with_subtract_times[i-1] = subtract_time;
 		  }
   }
+  std::sort(insert_times.begin(), insert_times.end());
   std::sort(with_map_times.begin(), with_map_times.end());
   std::sort(with_subtract_times.begin(), with_subtract_times.end());
+  printf("insert time = %lu\n", insert_times[trials / 2]);
   printf("with map time = %lu, with subtract time = %lu\n", with_map_times[trials / 2], with_subtract_times[trials / 2]);
 
 }
@@ -369,9 +377,9 @@ int main(int argc, char *argv[]) {
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
 
-  // { test_concurrent_sum_time<uint64_t>(n, seed, trials); }
+  { test_concurrent_sum_time<uint64_t>(n, seed, trials); }
 
-  // return 0; 
+  return 0; 
   std::vector<uint64_t> serial_times;
   std::vector<uint64_t> parallel_times;
   std::vector<uint64_t> serial_remove_times;

@@ -40,7 +40,7 @@
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
-#define PSUM_HEIGHT_CUTOFF 2 
+#define PSUM_HEIGHT_CUTOFF 2
 namespace tlx {
 
 //! \addtogroup tlx_container
@@ -83,6 +83,7 @@ namespace tlx {
 #define TLX_BTREE_FRIENDS           friend class btree_friend
 #endif
 
+#define INNER_BYTES 256
 /*!
  * Generates default traits for a B+ tree used as a set or map. It estimates
  * leaf and inner node sizes by assuming a cache line multiple of 256 bytes.
@@ -109,7 +110,7 @@ struct btree_default_traits {
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
     static const int inner_slots =
-        TLX_BTREE_MAX(8, 256 / (sizeof(Key) + sizeof(void*)));
+        TLX_BTREE_MAX(8, INNER_BYTES / (sizeof(Key) + sizeof(void*)));
 
     //! As of stx-btree-0.9, the code does linear search in find_lower() and
     //! find_upper() instead of binary_search, unless the node size is larger
@@ -1741,7 +1742,7 @@ public:
         else
         {
             const InnerNode* innernode = static_cast<const InnerNode*>(n);
-                if (n->level > PSUM_HEIGHT_CUTOFF) {
+                if (n->level >= PSUM_HEIGHT_CUTOFF) {
                         cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
                         {
                         	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
@@ -1767,7 +1768,7 @@ public:
         else
         {
             const InnerNode* innernode = static_cast<const InnerNode*>(n);
-                if (n->level > PSUM_HEIGHT_CUTOFF) {
+                if (n->level >= PSUM_HEIGHT_CUTOFF) {
                         cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
                         {
                         	psum_helper_with_map(innernode->childid[slot], partial_sums);
@@ -2893,10 +2894,10 @@ private:
             LeafNode* leaf = static_cast<LeafNode*>(curr);
             if constexpr (concurrent) {
                 leaf->mutex_.lock();
-                if constexpr (optimism) {
-                    (*parent_lock)->read_unlock(cpu_id);
-                    *parent_lock = nullptr;
-                }
+                // if constexpr (optimism) {
+                //     (*parent_lock)->read_unlock(cpu_id);
+                //     *parent_lock = nullptr;
+                // }
             }
             LeafNode* left_leaf = static_cast<LeafNode*>(left);
             LeafNode* right_leaf = static_cast<LeafNode*>(right);
@@ -3139,6 +3140,9 @@ private:
                 inner, slot, &lock_p, cpu_id);
             if constexpr (concurrent && optimism) {
               if (try_again) {
+                if (lock_p) {
+                    lock_p->read_unlock(cpu_id);
+                }
                 return {{}, true};
               }
             }
@@ -3147,9 +3151,15 @@ private:
 
             if (result.has(btree_not_found))
             {
-                if (concurrent && !optimism) {
-                    inner->mutex_.write_unlock();
-                }
+                if (concurrent) {
+                    if (!optimism) {
+                        inner->mutex_.write_unlock();
+                    } else {
+                        if (lock_p) {
+                            lock_p->read_unlock(cpu_id);
+                        }
+                    }
+                } 
                 return {result, false};
             }
 
@@ -3233,9 +3243,15 @@ private:
                     inner->slotuse = 0;
                     free_node(inner);
 
-                    if (concurrent && !optimism) {
-                        inner->mutex_.write_unlock();
-                    }
+                    if (concurrent) {
+                        if (!optimism) {
+                            inner->mutex_.write_unlock();
+                        } else {
+                            if (lock_p) {
+                                lock_p->read_unlock(cpu_id);
+                            }
+                        }
+                    } 
                     return {btree_ok, false};
                 }
                 // case : if both left and right leaves would underflow in case
@@ -3297,9 +3313,15 @@ private:
                 }
             }
 
-            if (concurrent && !optimism) {
-                inner->mutex_.write_unlock();
-            }
+            if (concurrent) {
+                if (!optimism) {
+                    inner->mutex_.write_unlock();
+                } else {
+                    if (lock_p) {
+                        lock_p->read_unlock(cpu_id);
+                    }
+                }
+            } 
             return {myres, false};
         }
     }
@@ -3785,9 +3807,9 @@ private:
 
         // copy the first items from the right node to the last slot in the left
         // node.
-        if (concurrent) {
-            right->mutex_.lock();
-        }
+        // if (concurrent) {
+        //     right->mutex_.lock();
+        // }
 
         // TODO: leafDS shift_left, should copy right-> end of left then shift right elems over
         left->slotdata.shift_left(&(right->slotdata), shiftnum);
@@ -3806,9 +3828,9 @@ private:
         left->manual_slotuse += shiftnum;
         right->manual_slotuse -= shiftnum;
 #endif
-        if (concurrent) {
-            right->mutex_.unlock();
-        }
+        // if (concurrent) {
+        //     right->mutex_.unlock();
+        // }
 
         key_type maxkey, secondmaxkey;
         left->slotdata.get_max_2(&maxkey, &secondmaxkey);
@@ -3933,9 +3955,9 @@ private:
 
         // TODO: leafDS shift_right, should shift right over to make room first then copy left -> right
 
-        if (concurrent) {
-            left->mutex_.lock();
-        }
+        // if (concurrent) {
+        //     left->mutex_.lock();
+        // }
         right->slotdata.shift_right(&(left->slotdata), shiftnum);
         // std::copy_backward(right->slotdata, right->slotdata + right->slotuse,
         //                    right->slotdata + right->slotuse + shiftnum);
@@ -3954,9 +3976,9 @@ private:
         right->manual_slotuse += shiftnum;
         left->manual_slotuse -= shiftnum;
 #endif
-        if (concurrent) {
-            left->mutex_.unlock();
-        }
+        // if (concurrent) {
+        //     left->mutex_.unlock();
+        // }
         // parent->slotkey[parentslot] = left->key(left->get_slotuse() - 1);
 
         key_type maxkey, secondmaxkey;
