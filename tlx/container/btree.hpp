@@ -1618,6 +1618,76 @@ public:
         return res;
     }
 
+    //! Non-STL function that applies read-only function to all elts in range [start, end) by key
+    template <class F>
+    void map_range(key_type start, key_type end, F f) const {
+        int cpuid = 0;
+        ReaderWriterLock *parent_lock = nullptr;
+        if constexpr(concurrent) {
+            cpuid = sched_getcpu();
+            mutex.read_lock(cpuid);
+            parent_lock = &mutex;
+        }
+        const node* n = root_;
+        if (!n) {
+            if constexpr(concurrent) {
+                mutex.read_unlock(cpuid);
+            }
+            return;
+        }
+
+        while (!n->is_leafnode())
+        {
+            const InnerNode* inner = static_cast<const InnerNode*>(n);
+            if constexpr(concurrent) {
+                inner->mutex_.read_lock(cpuid);
+                parent_lock->read_unlock(cpuid);
+                parent_lock = &(inner->mutex_);
+            }
+            unsigned short slot = find_lower(inner, start);
+
+            n = inner->childid[slot];
+        }
+        const LeafNode* leaf = static_cast<const LeafNode*>(n);
+        const LeafNode* old_leaf;
+
+        if constexpr(concurrent) {
+            leaf->mutex_.lock();
+            parent_lock->read_unlock(cpuid);
+        }
+        
+        unsigned short start_slot;
+        unsigned short end_slot;
+
+        while (true) {
+            // get first key greater or equal to start
+            start_slot = find_lower(leaf, start);
+            // get first key greator or equal to end, if == n, get next leaf
+            end_slot = find_lower(leaf, end);
+            
+            for (int i = start_slot; i < end_slot; i++) {
+                std::apply(f, std::forward_as_tuple(leaf->slotdata[i]));
+            }
+
+            if (end_slot == leaf->slotuse && leaf->next_leaf != nullptr) {
+                old_leaf = leaf;
+                leaf = static_cast<const LeafNode*>(leaf->next_leaf);
+                if constexpr (concurrent) {
+                    leaf->mutex_.lock();
+                    old_leaf->mutex_.unlock();
+                }
+            } else {
+                break;
+            }
+        }
+
+        if constexpr (concurrent) {
+            leaf->mutex_.unlock();
+        }
+
+        return;
+    }
+
     data_type value(const key_type &key) const {
       int cpuid = 0;
       ReaderWriterLock *parent_lock = nullptr;

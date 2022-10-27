@@ -481,6 +481,11 @@ public:
         return tree_.psum();
     }
 
+    template <class F>
+    void map_range(key_type start, key_type end, F f) const {
+        return tree_.map_range(start, end, f);
+    }
+
     //! Bulk load a sorted range [first,last). Loads items into leaves and
     //! constructs a B-tree above them. The tree must be empty when calling this
     //! function.
