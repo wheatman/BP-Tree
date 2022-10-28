@@ -1733,13 +1733,16 @@ public:
         while (true) {
             // get first key greater or equal to start
             start_slot = find_lower(leaf, start);
-            
-            for (int i = start_slot; count < length; i++) {
+            int i = start_slot;
+            for (; i < leaf->slotuse; i++) {
+                if (count >= length) {
+                    break;
+                }
                 std::apply(f, std::forward_as_tuple(leaf->slotdata[i]));
                 count++;
             }
 
-            if (count < length && leaf->next_leaf != nullptr) {
+            if (count < length && i >= leaf->slotuse && leaf->next_leaf != nullptr) {
                 old_leaf = leaf;
                 leaf = static_cast<const LeafNode*>(leaf->next_leaf);
                 if constexpr (concurrent) {
