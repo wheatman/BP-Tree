@@ -508,6 +508,16 @@ public:
         return tree_.bulk_load(first, last);
     }
 
+    template <class F>
+    void map_range(key_type start, key_type end, F f) {
+        return tree_.map_range(start, end, f);
+    }
+
+    template <class F>
+    void map_range_length(key_type start, uint64_t length, F f) const {
+        return tree_.map_range_length(start, length, f);
+    }
+
     //! \}
 
 public:
