@@ -1720,13 +1720,7 @@ public:
         }
 
         while (true) {
-            auto elem_list = leaf->slotdata.unsorted_range(start, end);
-            
-            for (auto e: elem_list) {
-                if (key_less(std::get<0>(e), end)) {
-                    std::apply(f, e);
-                }
-            }
+            leaf->slotdata.unsorted_range(start, end, f);
 
             key_type leaf_max, leaf_second_max;
             leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
@@ -1795,13 +1789,7 @@ public:
 
         while (true) {
             // get first key greater or equal to start
-            auto elem_list = leaf->slotdata.sorted_range(start, length - count);
-            
-            for (auto e: elem_list) {
-                std::apply(f, e);
-            }
-
-            count += elem_list.size();
+            count += leaf->slotdata.sorted_range(start, length - count, f);
 
             if (count < length && leaf->next_leaf != nullptr) {
                 old_leaf = leaf;

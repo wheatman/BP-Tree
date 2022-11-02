@@ -540,7 +540,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
         checker_sorted.size()/2,
         std::accumulate(correct_range_query_counts.begin(), correct_range_query_counts.end(), 0.0) / correct_range_query_counts.size());
 
-  /*
+  // /*
   start_time = get_usecs();
   // serial btree range sums
   for (uint32_t i = 0; i < checker_sorted.size()/2; i++) {
@@ -613,8 +613,8 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   if (wrong) {
     return {false, 0, 0, 0, 0};
   } 
-  return {true, 0, 0, 0, 0};
-  */
+  // return {true, 0, 0, 0, 0};
+  // */
 
   // *** testing map_range_length ***
 
