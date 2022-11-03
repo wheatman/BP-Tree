@@ -466,7 +466,7 @@ test_concurrent_btreemap(uint64_t max_size, std::seed_seq &seed) {
 template <class T>
 std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
 test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
-  uint64_t NUM_QUERIES = 10000;
+  uint64_t NUM_QUERIES = 100000;
   uint64_t MAX_QUERY_SIZE = 1000;
 
   std::vector<T> data =
@@ -485,7 +485,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   std::set<T> checker_set;
 
   for (uint32_t i = 0; i < max_size; i++) {
-    serial_set.insert(data[i]);
+    // serial_set.insert(data[i]);
     checker_set.insert(data[i]);
   }
 
@@ -527,7 +527,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   T start, end;
   bool wrong = false;
   // get correct range sums
-  for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+  cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
     start = checker_sorted[range_query_start_idxs[i]];
     end = checker_sorted[std::min(range_query_start_idxs[i] + range_query_lengths[i], checker_sorted.size() - 1)];
 
@@ -546,7 +546,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
         NUM_QUERIES,
         MAX_QUERY_SIZE);
 
-  // /*
+  /*
   start_time = get_usecs();
   // serial btree range sums
   for (uint32_t i = 0; i < NUM_QUERIES; i++) {
@@ -580,6 +580,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   if (wrong) {
     return {false, 0, 0, 0, 0};
   } 
+  */
 
   start_time = get_usecs();
   // concurrent btree range sums
@@ -626,6 +627,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   std::vector<T> concurrent_range_query_length_sums(NUM_QUERIES);
   std::vector<uint64_t> concurrent_range_query_length_counts(NUM_QUERIES);
 
+  /*
   start_time = get_usecs();
   // serial btree range sums
   for (uint32_t i = 0; i < NUM_QUERIES; i++) {
@@ -661,6 +663,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   if (wrong) {
     return {false, 0, 0, 0, 0};
   } 
+  */
 
   start_time = get_usecs();
   // concurrent btree range sums

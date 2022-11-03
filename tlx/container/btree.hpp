@@ -1780,8 +1780,11 @@ public:
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
         const LeafNode* old_leaf;
 
+        LeafNode* leaf_nonconst = const_cast<LeafNode*>(leaf);
+        LeafNode* old_leaf_nonconst;
+
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf_nonconst->mutex_.lock();
             parent_lock->read_unlock(cpuid);
         }
         
@@ -1789,14 +1792,14 @@ public:
 
         while (true) {
             // get first key greater or equal to start
-            count += leaf->slotdata.sorted_range(start, length - count, f);
+            count += leaf_nonconst->slotdata.sorted_range(start, length - count, f);
 
-            if (count < length && leaf->next_leaf != nullptr) {
-                old_leaf = leaf;
-                leaf = static_cast<const LeafNode*>(leaf->next_leaf);
+            if (count < length && leaf_nonconst->next_leaf != nullptr) {
+                old_leaf_nonconst = leaf_nonconst;
+                leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf->mutex_.lock();
-                    old_leaf->mutex_.unlock();
+                    leaf_nonconst->mutex_.lock();
+                    old_leaf_nonconst->mutex_.unlock();
                 }
             } else {
                 break;
@@ -1804,7 +1807,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf->mutex_.unlock();
+            leaf_nonconst->mutex_.unlock();
         }
         
         return;
