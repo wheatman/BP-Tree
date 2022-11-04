@@ -10,7 +10,7 @@
 #include <tlx/container/btree_set.hpp>
 #include <tlx/container/btree_map.hpp>
 
-#define CORRECTNESS 1
+#define CORRECTNESS 0
 #define TRIALS 5
 static long get_usecs() {
   struct timeval st;
@@ -466,8 +466,8 @@ test_concurrent_btreemap(uint64_t max_size, std::seed_seq &seed) {
 template <class T>
 std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
 test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
-  uint64_t NUM_QUERIES = 100000;
-  uint64_t MAX_QUERY_SIZE = 1000;
+  uint64_t NUM_QUERIES = 10000000;
+  uint64_t MAX_QUERY_SIZE = 100000;
 
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
@@ -526,6 +526,8 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
 
   T start, end;
   bool wrong = false;
+
+#if CORRECTNESS
   // get correct range sums
   cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
     start = checker_sorted[range_query_start_idxs[i]];
@@ -545,6 +547,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   printf("\t did %lu correct range queries with max query size %lu\n", 
         NUM_QUERIES,
         MAX_QUERY_SIZE);
+#endif
 
   /*
   start_time = get_usecs();
@@ -601,6 +604,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   concurrent_time = end_time - start_time;
   printf("\t did %lu range queries concurrently in %lu\n", NUM_QUERIES, concurrent_time);
 
+#if CORRECTNESS
   // correctness check of concurrent 
   wrong = false;
   for (size_t i = 0; i < correct_range_query_sums.size(); i++) {
@@ -616,6 +620,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   if (wrong) {
     return {false, 0, 0, 0, 0};
   } 
+#endif
   // return {true, 0, 0, 0, 0};
   // */
 
@@ -673,10 +678,18 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
 
     uint64_t num_in_range = 0;
     uint64_t sum_in_range = 0;
+
+#if CORRECTNESS
     concurrent_set.map_range_length(start, correct_range_query_counts[i], [&num_in_range, &sum_in_range]([[maybe_unused]] auto el) {
               num_in_range += 1;
               sum_in_range += el;
             });
+#else
+    concurrent_set.map_range_length(start, concurrent_range_query_counts[i], [&num_in_range, &sum_in_range]([[maybe_unused]] auto el) {
+              num_in_range += 1;
+              sum_in_range += el;
+            });
+#endif
     concurrent_range_query_length_counts[i] = num_in_range;
     concurrent_range_query_length_sums[i] = sum_in_range;
   }
@@ -684,6 +697,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   concurrent_time = end_time - start_time;
   printf("\t did %lu range queries by length concurrently in %lu\n", NUM_QUERIES, concurrent_time);
 
+#if CORRECTNESS
   // correctness check of concurrent 
   wrong = false;
   for (size_t i = 0; i < correct_range_query_sums.size(); i++) {
@@ -699,6 +713,7 @@ test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   if (wrong) {
     return {false, 0, 0, 0, 0};
   } 
+#endif
   return {true, 0, 0, 0, 0};
 }
 

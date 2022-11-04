@@ -1778,7 +1778,6 @@ public:
             n = inner->childid[slot];
         }
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
-        const LeafNode* old_leaf;
 
         LeafNode* leaf_nonconst = const_cast<LeafNode*>(leaf);
         LeafNode* old_leaf_nonconst;
