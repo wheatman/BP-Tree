@@ -36,7 +36,7 @@
 
 // leafDS parameters
 #define MANUAL_GET_NUM_ELTS 1
-#define HEADER_SIZE 32
+#define HEADER_SIZE 64
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
@@ -83,12 +83,12 @@ namespace tlx {
 #define TLX_BTREE_FRIENDS           friend class btree_friend
 #endif
 
-#define INNER_BYTES 256
+#define INNER_BYTES 1024
 /*!
  * Generates default traits for a B+ tree used as a set or map. It estimates
  * leaf and inner node sizes by assuming a cache line multiple of 256 bytes.
 */
-template <typename Key, typename Value>
+template <typename Key, typename Value, uint32_t internal_bytes = INNER_BYTES>
 struct btree_default_traits {
     //! If true, the tree will self verify its invariants after each insert() or
     //! erase(). The header must have been compiled with TLX_BTREE_DEBUG
@@ -110,7 +110,7 @@ struct btree_default_traits {
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
     static const int inner_slots =
-        TLX_BTREE_MAX(8, INNER_BYTES / (sizeof(Key) + sizeof(void*)));
+        TLX_BTREE_MAX(8, internal_bytes / (sizeof(Key) + sizeof(void*)));
 
     //! As of stx-btree-0.9, the code does linear search in find_lower() and
     //! find_upper() instead of binary_search, unless the node size is larger
