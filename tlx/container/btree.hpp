@@ -79,7 +79,7 @@ namespace tlx {
  * Generates default traits for a B+ tree used as a set or map. It estimates
  * leaf and inner node sizes by assuming a cache line multiple of 256 bytes.
 */
-template <typename Key, typename Value>
+template <typename Key, typename Value, uint32_t internal_bytes = 256, uint64_t leaf_bytes = 1024>
 struct btree_default_traits {
     //! If true, the tree will self verify its invariants after each insert() or
     //! erase(). The header must have been compiled with TLX_BTREE_DEBUG
@@ -95,12 +95,12 @@ struct btree_default_traits {
     //! Number of slots in each leaf of the tree. Estimated so that each node
     //! has a size of about 256 bytes.
     static const int leaf_slots =
-        TLX_BTREE_MAX(8, 1024 / (sizeof(Value)));
+        TLX_BTREE_MAX(8, leaf_bytes / (sizeof(Value)));
 
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
     static const int inner_slots =
-        TLX_BTREE_MAX(8, 256 / (sizeof(Key) + sizeof(void*)));
+        TLX_BTREE_MAX(8, internal_bytes / (sizeof(Key) + sizeof(void*)));
 
     //! As of stx-btree-0.9, the code does linear search in find_lower() and
     //! find_upper() instead of binary_search, unless the node size is larger
@@ -127,7 +127,7 @@ struct btree_default_traits {
 template <typename Key, typename Value,
           typename KeyOfValue,
           typename Compare = std::less<Key>,
-          typename Traits = btree_default_traits<Key, Value>,
+          typename Traits = btree_default_traits<Key, Value, 256, 1024>,
           bool Duplicates = false,
           typename Allocator = std::allocator<Value>,
           bool concurrent = false>
@@ -1621,6 +1621,9 @@ public:
     //! Non-STL function that applies read-only function to all elts in range [start, end) by key
     template <class F>
     void map_range(key_type start, key_type end, F f) const {
+        if (start == end) {
+            return;
+        }
         int cpuid = 0;
         ReaderWriterLock *parent_lock = nullptr;
         if constexpr(concurrent) {
@@ -1691,6 +1694,9 @@ public:
     //! Non-STL function that applies read-only function to all elts in range [start, end) by key
     template <class F>
     void map_range_length(key_type start, uint64_t length, F f) const {
+        if (length == 0) {
+            return;
+        }
         int cpuid = 0;
         ReaderWriterLock *parent_lock = nullptr;
         if constexpr(concurrent) {
