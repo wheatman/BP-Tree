@@ -1350,6 +1350,11 @@ int main(int argc, char *argv[]) {
     correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv);
     correct = test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(n, num_queries, seed, write_csv);
 
+    // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(n, num_queries, seed, write_csv);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(n, num_queries, seed, write_csv);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(n, num_queries, seed, write_csv);
+
 
     if (!correct) {
       printf("got the wrong answer :(\n");
