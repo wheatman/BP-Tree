@@ -3,5 +3,5 @@
 	url = git@github.com:wheatman/ParallelTools.git
 [submodule "btree_tests/leafDS"]
 	path = btree_tests/leafDS
-	url = https://github.com/itshelenxu/leafDS.git
+	url = git@github.com:itshelenxu/leafDS.git
 	branch = main
