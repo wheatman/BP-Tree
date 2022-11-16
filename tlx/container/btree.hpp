@@ -1861,56 +1861,56 @@ public:
 	}
 
 
-
-    void psum_helper_with_subtract(const node* n, uint64_t* partial_sums) const {
-        if (n->is_leafnode())
-        {
-            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
-
-            partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_direct();
-        }
-        else
-        {
-            const InnerNode* innernode = static_cast<const InnerNode*>(n);
-                if (n->level >= PSUM_HEIGHT_CUTOFF) {
-                        cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
-                        {
-                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
-                        }
-                } else {
-                        for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
-                        {
-                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
-                        }
-                }
-        }
-    }
-
-
-
-    void psum_helper_with_map(const node* n, uint64_t* partial_sums) const {
-        if (n->is_leafnode())
-        {
-            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
-
-            partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_with_map();
-        }
-        else
-        {
-            const InnerNode* innernode = static_cast<const InnerNode*>(n);
-                if (n->level >= PSUM_HEIGHT_CUTOFF) {
-                        cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
-                        {
-                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
-                        }
-                } else {
-                        for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
-                        {
-                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
-                        }
-                }
-        }
-    }
+//
+//    void psum_helper_with_subtract(const node* n, uint64_t* partial_sums) const {
+//        if (n->is_leafnode())
+//        {
+//            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
+//
+//            partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_direct();
+//        }
+//        else
+//        {
+//            const InnerNode* innernode = static_cast<const InnerNode*>(n);
+//                if (n->level >= PSUM_HEIGHT_CUTOFF) {
+//                        cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+//                        {
+//                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
+//                        }
+//                } else {
+//                        for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+//                        {
+//                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
+//                        }
+//                }
+//        }
+//    }
+//
+//
+//
+//    void psum_helper_with_map(const node* n, uint64_t* partial_sums) const {
+//        if (n->is_leafnode())
+//        {
+//            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
+//
+//            partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_with_map();
+//        }
+//        else
+//        {
+//            const InnerNode* innernode = static_cast<const InnerNode*>(n);
+//                if (n->level >= PSUM_HEIGHT_CUTOFF) {
+//                        cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+//                        {
+//                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
+//                        }
+//                } else {
+//                        for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+//                        {
+//                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
+//                        }
+//                }
+//        }
+//    }
 
 
     //! Tries to locate a key in the B+ tree and returns an iterator to the
