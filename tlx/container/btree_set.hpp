@@ -36,7 +36,7 @@ namespace tlx {
  */
 template <typename Key_,
           typename Compare_ = std::less<Key_>,
-          typename Traits_ = btree_default_traits<Key_, Key_, 256, 1024>,
+          typename Traits_ = btree_default_traits<Key_, Key_, 1024, 1024>,
           typename Alloc_ = std::allocator<Key_>,
           bool concurrent = false>
 class btree_set
