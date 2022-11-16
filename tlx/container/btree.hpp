@@ -36,7 +36,7 @@
 
 // leafDS parameters
 #define MANUAL_GET_NUM_ELTS 1
-#define HEADER_SIZE 64
+#define HEADER_SIZE 32
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
