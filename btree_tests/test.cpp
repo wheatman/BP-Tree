@@ -1078,220 +1078,222 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 bool
-test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv) {
-  printf("\nRunning plain btree with internal bytes = %lu, leaf bytes = %lu\n",internal_bytes, leaf_bytes);
-
+test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
   std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
-  std::vector<T> data =
-      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
-  
-  std::set<T> checker_set;
-  bool wrong;
-
-#if CORRECTNESS
-  for (uint32_t i = 0; i < max_size; i++) {
-    checker_set.insert(data[i]);
-  }
-
-  std::vector<T> checker_sorted;
-  for (auto key: checker_set) {
-    checker_sorted.push_back(key);
-  }
-  std::sort(checker_sorted.begin(), checker_sorted.end());
-#endif
-
-  std::seed_seq query_seed{1};
-  std::seed_seq query_seed_2{2};
-
-#if CORRECTNESS
-  std::vector<uint64_t> range_query_start_idxs =
-      create_random_data<uint64_t>(NUM_QUERIES, checker_sorted.size() - 1, query_seed);
-#else
-  std::vector<uint64_t> range_query_start_idxs =
-      create_random_data<uint64_t>(NUM_QUERIES, data.size() - 1, query_seed);
-#endif
-
-  uint64_t start_time, end_time, insert_time, find_time;
-
+  uint64_t start_time, end_time;
+  std::vector<uint64_t> insert_times;
+  std::vector<uint64_t> find_times;
   std::vector<uint64_t> sorted_range_query_times_by_size;
   std::vector<uint64_t> unsorted_range_query_times_by_size;
 
-  // output to tree_type, internal bytes, leaf bytes, num_inserted, insert_time, num_finds, find_time, num_range_queries, range_time_maxlen_{}*
+  for (int cur_trial = 0; cur_trial <= trials; cur_trial++) {
+    printf("\nRunning plain btree with internal bytes = %u, leaf bytes = %u, trial = %d\n",internal_bytes, leaf_bytes, cur_trial);
 
-  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
-                std::allocator<T>, true> concurrent_map;
+    std::vector<T> data =
+        create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+    
+    std::set<T> checker_set;
+    bool wrong;
 
-  // TIME INSERTS
-  start_time = get_usecs();
-  cilk_for(uint32_t i = 0; i < max_size; i++) {
-    concurrent_map.insert({data[i], 2*data[i]});
-  }
-  end_time = get_usecs();
-  insert_time = end_time - start_time;
-  printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
-  
+  #if CORRECTNESS
+    for (uint32_t i = 0; i < max_size; i++) {
+      checker_set.insert(data[i]);
+    }
 
-  // TIME POINT QUERIES
-  start_time = get_usecs();
-  cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
-    concurrent_map.exists(data[range_query_start_idxs[i]]);
-  }
-  end_time = get_usecs();
-  find_time = end_time - start_time;
-  printf("\tDone finding %lu elts in %lu\n",NUM_QUERIES, end_time - start_time);
+    std::vector<T> checker_sorted;
+    for (auto key: checker_set) {
+      checker_sorted.push_back(key);
+    }
+    std::sort(checker_sorted.begin(), checker_sorted.end());
+  #endif
 
-  // TIME RANGE QUERIES FOR ALL LENGTHS
-  for (size_t query_size_i = 0; query_size_i < num_query_sizes.size(); query_size_i++) {
-    uint64_t MAX_QUERY_SIZE = num_query_sizes[query_size_i];
-    std::vector<uint64_t> range_query_lengths =
-      create_random_data<uint64_t>(NUM_QUERIES, MAX_QUERY_SIZE - 1, query_seed_2);
+    std::seed_seq query_seed{1};
+    std::seed_seq query_seed_2{2};
 
-    T start, end;
-#if CORRECTNESS
-    std::vector<T> correct_range_query_maxs(NUM_QUERIES);
-    std::vector<uint64_t> correct_range_query_counts(NUM_QUERIES);
+  #if CORRECTNESS
+    std::vector<uint64_t> range_query_start_idxs =
+        create_random_data<uint64_t>(NUM_QUERIES, checker_sorted.size() - 1, query_seed);
+  #else
+    std::vector<uint64_t> range_query_start_idxs =
+        create_random_data<uint64_t>(NUM_QUERIES, data.size() - 1, query_seed);
+  #endif
 
-    // get correct range sums
-    cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
-      start = checker_sorted[range_query_start_idxs[i]];
+    // output to tree_type, internal bytes, leaf bytes, num_inserted, insert_time, num_finds, find_time, num_range_queries, range_time_maxlen_{}*
 
-      correct_range_query_counts[i] = 0;
-      correct_range_query_maxs[i] = start;
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+                  std::allocator<T>, true> concurrent_map;
 
-      size_t curr_index = range_query_start_idxs[i];
-      // if (i == 12280) {
-      //   printf("problem with len %lu\n", range_query_lengths[i]);
-      //   printf("curr index %lu, checker size %lu \n", curr_index, checker_sorted.size());
-      // }
+    // TIME INSERTS
+    start_time = get_usecs();
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_map.insert({data[i], 2*data[i]});
+    }
+    end_time = get_usecs();
+    if (cur_trial > 0) {insert_times.push_back(end_time - start_time);}
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+    
 
-      // printf("query len %lu", range_query_lengths[i]);
-      for (uint64_t count = 0; count < range_query_lengths[i]; count++) {
-        if (curr_index >= checker_sorted.size()) {
-          break;
+    // TIME POINT QUERIES
+    start_time = get_usecs();
+    cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
+      concurrent_map.exists(data[range_query_start_idxs[i]]);
+    }
+    end_time = get_usecs();
+    if (cur_trial > 0) {find_times.push_back(end_time - start_time);}
+    printf("\tDone finding %lu elts in %lu\n",NUM_QUERIES, end_time - start_time);
+
+    // TIME RANGE QUERIES FOR ALL LENGTHS
+    for (size_t query_size_i = 0; query_size_i < num_query_sizes.size(); query_size_i++) {
+      uint64_t MAX_QUERY_SIZE = num_query_sizes[query_size_i];
+      std::vector<uint64_t> range_query_lengths =
+        create_random_data<uint64_t>(NUM_QUERIES, MAX_QUERY_SIZE - 1, query_seed_2);
+
+      T start, end;
+  #if CORRECTNESS
+      std::vector<T> correct_range_query_maxs(NUM_QUERIES);
+      std::vector<uint64_t> correct_range_query_counts(NUM_QUERIES);
+
+      // get correct range sums
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        start = checker_sorted[range_query_start_idxs[i]];
+
+        correct_range_query_counts[i] = 0;
+        correct_range_query_maxs[i] = start;
+
+        size_t curr_index = range_query_start_idxs[i];
+        // if (i == 12280) {
+        //   printf("problem with len %lu\n", range_query_lengths[i]);
+        //   printf("curr index %lu, checker size %lu \n", curr_index, checker_sorted.size());
+        // }
+
+        // printf("query len %lu", range_query_lengths[i]);
+        for (uint64_t count = 0; count < range_query_lengths[i]; count++) {
+          if (curr_index >= checker_sorted.size()) {
+            break;
+          }
+          correct_range_query_maxs[i] = checker_sorted[curr_index];
+          correct_range_query_counts[i] += 1;
+          // printf("range count %lu", correct_range_query_counts[i] );
+          curr_index++;
         }
-        correct_range_query_maxs[i] = checker_sorted[curr_index];
-        correct_range_query_counts[i] += 1;
-        // printf("range count %lu", correct_range_query_counts[i] );
-        curr_index++;
       }
+      printf("\t did %lu correct range queries with max query size %lu\n", 
+            NUM_QUERIES,
+            MAX_QUERY_SIZE);
+  #endif
+
+      // sorted query first to get end key
+      std::vector<T> concurrent_range_query_length_maxs(NUM_QUERIES);
+      std::vector<uint64_t> concurrent_range_query_length_counts(NUM_QUERIES);
+
+      start_time = get_usecs();
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+  #if CORRECTNESS
+        start = checker_sorted[range_query_start_idxs[i]];
+  #else 
+        start = data[range_query_start_idxs[i]];
+  #endif
+
+        uint64_t num_in_range = 0;
+        T max_key_in_range = start;
+
+        concurrent_map.map_range_length(start, range_query_lengths[i], [&num_in_range, &max_key_in_range]([[maybe_unused]] auto el) {
+                  num_in_range++;
+                  if (el.first > max_key_in_range) {
+                    max_key_in_range = el.first;
+                  }
+                });
+        concurrent_range_query_length_counts[i] = num_in_range;
+        concurrent_range_query_length_maxs[i] = max_key_in_range;
+      }
+      end_time = get_usecs();
+      if (cur_trial > 0) {sorted_range_query_times_by_size.push_back(end_time - start_time);}
+      printf("\t\t did sorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+
+  #if CORRECTNESS
+      // correctness check of concurrent sorted query
+      wrong = false;
+      for (size_t i = 0; i < NUM_QUERIES; i++) {
+        if (correct_range_query_counts[i] != concurrent_range_query_length_counts[i]) {
+          printf("wrong concurrent range query length count at %lu with len %lu, expected %lu, got %lu\n", i, range_query_lengths[i], correct_range_query_counts[i], concurrent_range_query_length_counts[i]);
+          wrong = true;
+        }
+        if (correct_range_query_maxs[i] != concurrent_range_query_length_maxs[i]) {
+          printf("wrong concurrent range query length max, expected %lu, got %lu\n", correct_range_query_maxs[i], concurrent_range_query_length_maxs[i]);
+          wrong = true;
+        }
+      }
+      if (wrong) {
+        return false;
+      } 
+  #endif
+
+      std::vector<T> concurrent_range_query_maxs(NUM_QUERIES);
+      std::vector<uint64_t> concurrent_range_query_counts(NUM_QUERIES);
+
+      start_time = get_usecs();
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+  #if CORRECTNESS
+        start = checker_sorted[range_query_start_idxs[i]];
+  #else 
+        start = data[range_query_start_idxs[i]];
+  #endif
+        end = concurrent_range_query_length_maxs[i];
+        if (range_query_lengths[i] != 0) {
+          end++;
+        }
+
+        uint64_t num_in_range = 0;
+        T max_key_in_range = start;
+        concurrent_map.map_range(start, end, [&num_in_range, &max_key_in_range]([[maybe_unused]] auto el) {
+                  num_in_range += 1;
+                  if (el.first > max_key_in_range) {
+                    max_key_in_range = el.first;
+                  }
+                });
+        concurrent_range_query_counts[i] = num_in_range;
+        concurrent_range_query_maxs[i] = max_key_in_range;
+      }
+      end_time = get_usecs();
+      if (cur_trial > 0) {unsorted_range_query_times_by_size.push_back(end_time - start_time);}
+      printf("\t\t did unsorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+
+  #if CORRECTNESS
+      // correctness check of concurrent 
+      wrong = false;
+      for (size_t i = 0; i < NUM_QUERIES; i++) {
+        if (correct_range_query_counts[i] != concurrent_range_query_counts[i]) {
+          printf("wrong concurrent range query count, expected %lu, got %lu\n", correct_range_query_counts[i], concurrent_range_query_counts[i]);
+          wrong = true;
+        }
+        if (correct_range_query_maxs[i] != concurrent_range_query_maxs[i]) {
+          printf("wrong concurrent range query max, expected %lu, got %lu\n", correct_range_query_maxs[i], concurrent_range_query_maxs[i]);
+          wrong = true;
+        }
+      }
+      if (wrong) {
+        return false;
+      } 
+  #endif
+
+  #if CORRECTNESS 
+      // non checker_sorted correctness check
+      wrong = false;
+      for (size_t i = 0; i < NUM_QUERIES; i++) {
+        if (concurrent_range_query_length_counts[i] != concurrent_range_query_counts[i]) {
+          printf("wrong concurrent range query count, expected %lu, got %lu\n", concurrent_range_query_length_counts[i], concurrent_range_query_counts[i]);
+          wrong = true;
+        }
+        if (concurrent_range_query_length_maxs[i] != concurrent_range_query_maxs[i]) {
+          printf("wrong concurrent range query max, expected %lu, got %lu\n", concurrent_range_query_length_maxs[i], concurrent_range_query_maxs[i]);
+          wrong = true;
+        }
+      }
+      if (wrong) { return false;}
+  #endif
     }
-    printf("\t did %lu correct range queries with max query size %lu\n", 
-          NUM_QUERIES,
-          MAX_QUERY_SIZE);
-#endif
-
-    // sorted query first to get end key
-    std::vector<T> concurrent_range_query_length_maxs(NUM_QUERIES);
-    std::vector<uint64_t> concurrent_range_query_length_counts(NUM_QUERIES);
-
-    start_time = get_usecs();
-    cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
-#if CORRECTNESS
-      start = checker_sorted[range_query_start_idxs[i]];
-#else 
-      start = data[range_query_start_idxs[i]];
-#endif
-
-      uint64_t num_in_range = 0;
-      T max_key_in_range = start;
-
-      concurrent_map.map_range_length(start, range_query_lengths[i], [&num_in_range, &max_key_in_range]([[maybe_unused]] auto el) {
-                num_in_range++;
-                if (el.first > max_key_in_range) {
-                  max_key_in_range = el.first;
-                }
-              });
-      concurrent_range_query_length_counts[i] = num_in_range;
-      concurrent_range_query_length_maxs[i] = max_key_in_range;
-    }
-    end_time = get_usecs();
-    sorted_range_query_times_by_size.push_back(end_time - start_time);
-    printf("\t\t did sorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
-
-#if CORRECTNESS
-    // correctness check of concurrent sorted query
-    wrong = false;
-    for (size_t i = 0; i < NUM_QUERIES; i++) {
-      if (correct_range_query_counts[i] != concurrent_range_query_length_counts[i]) {
-        printf("wrong concurrent range query length count at %lu with len %lu, expected %lu, got %lu\n", i, range_query_lengths[i], correct_range_query_counts[i], concurrent_range_query_length_counts[i]);
-        wrong = true;
-      }
-      if (correct_range_query_maxs[i] != concurrent_range_query_length_maxs[i]) {
-        printf("wrong concurrent range query length max, expected %lu, got %lu\n", correct_range_query_maxs[i], concurrent_range_query_length_maxs[i]);
-        wrong = true;
-      }
-    }
-    if (wrong) {
-      return false;
-    } 
-#endif
-
-    std::vector<T> concurrent_range_query_maxs(NUM_QUERIES);
-    std::vector<uint64_t> concurrent_range_query_counts(NUM_QUERIES);
-
-    start_time = get_usecs();
-    cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
-#if CORRECTNESS
-      start = checker_sorted[range_query_start_idxs[i]];
-#else 
-      start = data[range_query_start_idxs[i]];
-#endif
-      end = concurrent_range_query_length_maxs[i];
-      if (range_query_lengths[i] != 0) {
-        end++;
-      }
-
-      uint64_t num_in_range = 0;
-      T max_key_in_range = start;
-      concurrent_map.map_range(start, end, [&num_in_range, &max_key_in_range]([[maybe_unused]] auto el) {
-                num_in_range += 1;
-                if (el.first > max_key_in_range) {
-                  max_key_in_range = el.first;
-                }
-              });
-      concurrent_range_query_counts[i] = num_in_range;
-      concurrent_range_query_maxs[i] = max_key_in_range;
-    }
-    end_time = get_usecs();
-    unsorted_range_query_times_by_size.push_back(end_time - start_time);
-    printf("\t\t did unsorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
-
-#if CORRECTNESS
-    // correctness check of concurrent 
-    wrong = false;
-    for (size_t i = 0; i < NUM_QUERIES; i++) {
-      if (correct_range_query_counts[i] != concurrent_range_query_counts[i]) {
-        printf("wrong concurrent range query count, expected %lu, got %lu\n", correct_range_query_counts[i], concurrent_range_query_counts[i]);
-        wrong = true;
-      }
-      if (correct_range_query_maxs[i] != concurrent_range_query_maxs[i]) {
-        printf("wrong concurrent range query max, expected %lu, got %lu\n", correct_range_query_maxs[i], concurrent_range_query_maxs[i]);
-        wrong = true;
-      }
-    }
-    if (wrong) {
-      return false;
-    } 
-#endif
-
-#if CORRECTNESS 
-    // non checker_sorted correctness check
-    wrong = false;
-    for (size_t i = 0; i < NUM_QUERIES; i++) {
-      if (concurrent_range_query_length_counts[i] != concurrent_range_query_counts[i]) {
-        printf("wrong concurrent range query count, expected %lu, got %lu\n", concurrent_range_query_length_counts[i], concurrent_range_query_counts[i]);
-        wrong = true;
-      }
-      if (concurrent_range_query_length_maxs[i] != concurrent_range_query_maxs[i]) {
-        printf("wrong concurrent range query max, expected %lu, got %lu\n", concurrent_range_query_length_maxs[i], concurrent_range_query_maxs[i]);
-        wrong = true;
-      }
-    }
-    if (wrong) { return false;}
-#endif
   }
-
   // DONE WITH TESTS FOR THIS SIZE
   if (!write_csv) { 
     printf("correct\n");
@@ -1299,12 +1301,26 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     // printf("tree_type, internal bytes, leaf bytes, num_inserted, insert_time, num_finds, find_time, \n");
     // tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time
     std::ofstream outfile;
+    uint64_t insert_time_med, find_time_med;
+    std::sort(insert_times.begin(), insert_times.end());
+    std::sort(find_times.begin(), find_times.end());
+    insert_time_med = insert_times[trials/2];
+    find_time_med = find_times[trials/2];
+
     outfile.open("insert_finds.csv", std::ios_base::app); 
-    outfile << "plain, " << internal_bytes << ", " <<  leaf_bytes << ", " <<  max_size << ", " <<  insert_time << ", " <<  NUM_QUERIES << ", " <<  find_time << ", \n";
+    outfile << "plain, " << internal_bytes << ", " <<  leaf_bytes << ", " <<  max_size << ", " <<  insert_time_med << ", " <<  NUM_QUERIES << ", " <<  find_time_med << ", \n";
     outfile.close();
     outfile.open("range_queries.csv", std::ios_base::app); 
     for (size_t i = 0; i < num_query_sizes.size(); i ++ ) {
-      outfile << "plain, " << internal_bytes << ", " <<  leaf_bytes << ", " <<  max_size << ", " <<  NUM_QUERIES << ", " <<  num_query_sizes[i] << ", " <<  unsorted_range_query_times_by_size[i] << ", " <<  sorted_range_query_times_by_size[i] << ", \n";
+      std::vector<uint64_t> curr_unsorted_query_times;
+      std::vector<uint64_t> curr_sorted_query_times;
+      for (int t = 0; t < trials; t++) {
+        curr_unsorted_query_times.push_back(unsorted_range_query_times_by_size[t*num_query_sizes.size() + i]);
+        curr_sorted_query_times.push_back(sorted_range_query_times_by_size[t*num_query_sizes.size() + i]);
+      }
+      std::sort(curr_unsorted_query_times.begin(), curr_unsorted_query_times.end());
+      std::sort(curr_sorted_query_times.begin(), curr_sorted_query_times.end());
+      outfile << "plain, " << internal_bytes << ", " <<  leaf_bytes << ", " <<  max_size << ", " <<  NUM_QUERIES << ", " <<  num_query_sizes[i] << ", " <<  curr_unsorted_query_times[trials/2] << ", " <<  curr_sorted_query_times[trials/2] << ", \n";
     }
     outfile.close();
   }
@@ -1316,7 +1332,7 @@ int main(int argc, char *argv[]) {
     printf("call with the number of elements to insert\n");
     return -1;
   }
-  int trials = 1;
+  int trials = 5;
   // if (argc > 2) {
   //   trials = atoi(argv[2]);
   // }
@@ -1332,7 +1348,7 @@ int main(int argc, char *argv[]) {
   // std::vector<uint64_t> serial_remove_times;
   // std::vector<uint64_t> parallel_times;
   // std::vector<uint64_t> parallel_remove_times;
-  for (int i = 0; i < trials; i++) {
+  // for (int i = 0; i < trials; i++) {
     // auto [correct, serial, parallel, serial_remove, parallel_remove] =
     //     test_concurrent_btreemap<unsigned long, 256, 1024>(n, num_queries, seed);
     std::ofstream outfile;
@@ -1343,17 +1359,23 @@ int main(int argc, char *argv[]) {
     outfile << "tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
     outfile.close();
 
-    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv);
-    correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv);
-    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv);
-    correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv);
-    correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv);
-    correct = test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(n, num_queries, seed, write_csv);
+    // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 32768, 32768>(n, num_queries, seed, write_csv, trials);
+    // correct = test_concurrent_microbenchmarks_map<unsigned long, 65536, 65536>(n, num_queries, seed, write_csv, trials);
 
-    // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(n, num_queries, seed, write_csv);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(n, num_queries, seed, write_csv);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(n, num_queries, seed, write_csv);
+    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(n, num_queries, seed, write_csv, trials);
+    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(n, num_queries, seed, write_csv, trials);
+    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(n, num_queries, seed, write_csv, trials);
+    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 16384>(n, num_queries, seed, write_csv, trials);
+    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 32768>(n, num_queries, seed, write_csv, trials);
+    correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 65536>(n, num_queries, seed, write_csv, trials);
 
 
     if (!correct) {
@@ -1367,7 +1389,7 @@ int main(int argc, char *argv[]) {
 	  //   parallel_times.push_back(parallel);
 	  //   parallel_remove_times.push_back(parallel_remove);
     // }
-  }
+  // }
   // std::sort(serial_times.begin(), serial_times.end());
   // std::sort(serial_remove_times.begin(), serial_remove_times.end());
   // std::sort(parallel_times.begin(), parallel_times.end());
