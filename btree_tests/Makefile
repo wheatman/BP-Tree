@@ -51,7 +51,8 @@ all: basic
 basic: test.cpp
 	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ test.cpp
 
-
+ycsb: test.cpp
+	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ ycsb.cpp
 
 clean:
 	rm -f *.o opt profile basic code.profdata default.profraw
