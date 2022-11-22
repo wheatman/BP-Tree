@@ -1089,9 +1089,11 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
       // sorted query first to get end key
       std::vector<T> concurrent_range_query_length_maxs(NUM_QUERIES);
       std::vector<uint64_t> concurrent_range_query_length_counts(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_length_key_sums(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_length_val_sums(NUM_QUERIES);
 
-      start_time = get_usecs();
       cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start;
   #if CORRECTNESS
         start = checker_sorted[range_query_start_idxs[i]];
   #else 
@@ -1110,9 +1112,40 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
         concurrent_range_query_length_counts[i] = num_in_range;
         concurrent_range_query_length_maxs[i] = max_key_in_range;
       }
+
+      start_time = get_usecs();
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start;
+  #if CORRECTNESS
+        start = checker_sorted[range_query_start_idxs[i]];
+  #else 
+        start = data[range_query_start_idxs[i]];
+  #endif
+        T sum_key_range = 0;
+        T sum_val_range = 0;
+        concurrent_map.map_range_length(start, range_query_lengths[i], [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                  sum_key_range += key;
+                  sum_val_range += val;
+                });
+        concurrent_range_query_length_key_sums[i] = sum_key_range;
+        concurrent_range_query_length_val_sums[i] = sum_val_range;
+      }
       end_time = get_usecs();
       if (cur_trial > 0) {sorted_range_query_times_by_size.push_back(end_time - start_time);}
       printf("\t\t did sorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+      T sum_all_keys = 0;
+      for (auto e: concurrent_range_query_length_key_sums) {
+        sum_all_keys += e;
+      }
+      T sum_all_vals = 0;
+      for (auto e: concurrent_range_query_length_val_sums) {
+        sum_all_vals += e;
+      }
+      if (sum_all_keys * 2 != sum_all_vals) {
+        printf("\t\t\t wrong, sum keys * 2 %lu not equal to sum vals %lu\n", sum_all_keys, sum_all_vals);
+        // return false;
+      }
+      printf("\t\t\t sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
 
   #if CORRECTNESS
       // correctness check of concurrent sorted query
@@ -1132,21 +1165,21 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
       } 
   #endif
 
+#if CORRECTNESS
       std::vector<T> concurrent_range_query_maxs(NUM_QUERIES);
       std::vector<uint64_t> concurrent_range_query_counts(NUM_QUERIES);
+#endif
+      std::vector<T> concurrent_range_query_key_sums(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_val_sums(NUM_QUERIES);
 
-      start_time = get_usecs();
+#if CORRECTNESS
       cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
-  #if CORRECTNESS
+        T start, end;
         start = checker_sorted[range_query_start_idxs[i]];
-  #else 
-        start = data[range_query_start_idxs[i]];
-  #endif
         end = concurrent_range_query_length_maxs[i];
         if (range_query_lengths[i] != 0) {
           end++;
         }
-
         uint64_t num_in_range = 0;
         T max_key_in_range = start;
         concurrent_map.map_range(start, end, [&num_in_range, &max_key_in_range]([[maybe_unused]] auto key, auto val) {
@@ -1158,10 +1191,46 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
         concurrent_range_query_counts[i] = num_in_range;
         concurrent_range_query_maxs[i] = max_key_in_range;
       }
+#endif
+
+      start_time = get_usecs();
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start, end;
+  #if CORRECTNESS
+        start = checker_sorted[range_query_start_idxs[i]];
+  #else 
+        start = data[range_query_start_idxs[i]];
+  #endif
+        end = concurrent_range_query_length_maxs[i];
+        if (range_query_lengths[i] != 0) {
+          end++;
+        }
+
+        T sum_key_range = 0;
+        T sum_val_range = 0;
+        concurrent_map.map_range(start, end, [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                  sum_key_range += key;
+                  sum_val_range += val;
+                });
+        concurrent_range_query_key_sums[i] = sum_key_range;
+        concurrent_range_query_val_sums[i] = sum_val_range;
+      }
       end_time = get_usecs();
       if (cur_trial > 0) {unsorted_range_query_times_by_size.push_back(end_time - start_time);}
       printf("\t\t did unsorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
-
+      sum_all_keys = 0;
+      for (auto e: concurrent_range_query_key_sums) {
+        sum_all_keys += e;
+      }
+      sum_all_vals = 0;
+      for (auto e: concurrent_range_query_val_sums) {
+        sum_all_vals += e;
+      }
+      if (sum_all_keys * 2 != sum_all_vals) {
+        printf("\t\t\t wrong, sum keys * 2 not equal to sum vals\n");
+        // return false;
+      }
+      printf("\t\t\t sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
   #if CORRECTNESS
       // correctness check of concurrent 
       wrong = false;
@@ -1197,6 +1266,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
   #endif
     }
   }
+
   // DONE WITH TESTS FOR THIS SIZE
   if (!write_csv) { 
     printf("correct\n");
@@ -1236,62 +1306,26 @@ int main(int argc, char *argv[]) {
     return -1;
   }
   int trials = 5;
-  // if (argc > 2) {
-  //   trials = atoi(argv[2]);
-  // }
+
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
   int num_queries = atoi(argv[2]);
   bool write_csv = true;
 
-  // std::vector<uint64_t> serial_times;
-  // std::vector<uint64_t> serial_remove_times;
-  // std::vector<uint64_t> parallel_times;
-  // std::vector<uint64_t> parallel_remove_times;
-  // for (int i = 0; i < trials; i++) {
-    // auto [correct, serial, parallel, serial_remove, parallel_remove] =
-    //     test_concurrent_range_query_map<unsigned long>(n, num_queries, seed);
-    std::ofstream outfile;
-    outfile.open("insert_finds.csv", std::ios_base::app); 
-    outfile << "tree_type, internal bytes, leaf slots, num_inserted, insert_time, num_finds, find_time, \n";
-    outfile.close();
-    outfile.open("range_queries.csv", std::ios_base::app); 
-    outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
-    outfile.close();
+  std::ofstream outfile;
+  outfile.open("insert_finds.csv", std::ios_base::app); 
+  outfile << "tree_type, internal bytes, leaf slots, num_inserted, insert_time, num_finds, find_time, \n";
+  outfile.close();
+  outfile.open("range_queries.csv", std::ios_base::app); 
+  outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
+  outfile.close();
 
-    // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 512>(n, num_queries, seed, write_csv, trials);
-    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 2048>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 4096>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 8192>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 16384>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 32768>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
-    // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(n, num_queries, seed, write_csv, trials);
-    // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(n, num_queries, seed, write_csv, trials);
+  if (!correct) {
+    printf("got the wrong answer :(\n");
+    return -1;
+  }
 
-
-    if (!correct) {
-      printf("got the wrong answer :(\n");
-      return -1;
-    }
-
-    // if (i > 0) {
-	  //   serial_times.push_back(serial);
-	  //   serial_remove_times.push_back(serial_remove);
-	  //   parallel_times.push_back(parallel);
-	  //   parallel_remove_times.push_back(parallel_remove);
-    // }
-  // }
-  // std::sort(serial_times.begin(), serial_times.end());
-  // std::sort(serial_remove_times.begin(), serial_remove_times.end());
-  // std::sort(parallel_times.begin(), parallel_times.end());
-  // std::sort(parallel_remove_times.begin(), parallel_remove_times.end());
-  // printf("%lu, %lu, %lu, %lu\n", serial_times[trials / 2],
-  //        parallel_times[trials / 2], serial_remove_times[trials / 2],
-  //        parallel_remove_times[trials / 2]);
   return 0;
 }
