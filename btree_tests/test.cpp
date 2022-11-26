@@ -174,6 +174,79 @@ void test_concurrent_find(uint64_t max_size, std::seed_seq &seed) {
 }
 
 template <class T>
+void
+test_merge_btree(uint64_t max_size, int num_trials) {
+
+    std::seed_seq seed1{0};
+    std::vector<T> data1 =
+            create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed1);
+
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+            std::allocator<T>, true>
+            concurrent_map1, concurrent_map2;
+
+
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+        concurrent_map1.insert({data1[i], 2*data1[i]});
+    }
+
+
+    std::seed_seq seed2{1};
+    std::vector<T> data2 =
+            create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed2);
+
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+        concurrent_map2.insert({data2[i], 2*data2[i]});
+    }
+
+
+    typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+            std::allocator<T>, true> btree_type;
+
+    for(int i = 0; i < num_trials; i++) {
+        tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+                std::allocator<T>, true> merged_tree;
+        typename btree_type::iterator iterator1 = concurrent_map1.begin();
+        typename btree_type::iterator iterator2 = concurrent_map2.begin();
+
+        uint64_t start_time, end_time;
+        start_time = get_usecs();
+        while (iterator1 != concurrent_map1.end() && iterator2 != concurrent_map2.end()) {
+            if (iterator1->first < iterator2->first) {
+                merged_tree.insert({iterator1->first, iterator1->second});
+                iterator1++;
+            } else {
+                merged_tree.insert({iterator2->first, iterator2->second});
+                iterator2++;
+            }
+        }
+        if (iterator1 != concurrent_map1.end()) {
+            while (iterator1 != concurrent_map1.end()) {
+                merged_tree.insert({iterator1->first, iterator1->second});
+                iterator1++;
+            }
+        } else if (iterator2 != concurrent_map2.end()) {
+            while (iterator2 != concurrent_map2.end()) {
+                merged_tree.insert({iterator2->first, iterator2->second});
+                iterator2++;
+            }
+        } else {
+            std::cout << "Invalid scenario!\n";
+            exit(0);
+        }
+        end_time = get_usecs();
+        printf("\tDone merging %lu elts in %lu\n", max_size, end_time - start_time);
+    }
+//    typename btree_type::iterator iterator3 = merged_tree.begin();
+//    while(iterator3 != merged_tree.end()){
+//        std::cout << iterator3->first << " :: " << iterator3->second << std::endl;
+//        iterator3++;
+//    }
+
+}
+
+
+template <class T>
 std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
 test_concurrent_range_query(uint64_t max_size, std::seed_seq &seed) {
   uint64_t NUM_QUERIES = 10000000;
@@ -1544,8 +1617,8 @@ void array_range_query_baseline(uint64_t max_size, uint64_t NUM_QUERIES, std::se
 }
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    printf("call with the number of elements to insert\n");
+  if (argc < 4) {
+    printf("call with the number of elements to insert, query and merge in btrees\n");
     return -1;
   }
   int trials = 5;
@@ -1553,6 +1626,7 @@ int main(int argc, char *argv[]) {
   std::seed_seq seed{0};
   int n = atoi(argv[1]);
   int num_queries = atoi(argv[2]);
+  int num_entries_to_merge = atoi(argv[3]);
   bool write_csv = true;
 
   std::ofstream outfile;
@@ -1566,6 +1640,7 @@ int main(int argc, char *argv[]) {
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
 
   bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+  test_merge_btree<unsigned long>(num_entries_to_merge, 5);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv, trials);
