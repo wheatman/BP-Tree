@@ -975,6 +975,7 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
+  // std::vector<uint32_t> num_query_sizes{50};
   std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
   uint64_t start_time, end_time;
@@ -988,6 +989,8 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
 
     // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
+    // std::vector<T> data =
+    //     create_random_data<T>(max_size, max_size * 2, seed);
     std::vector<T> data =
         create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
     
@@ -1112,6 +1115,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
         concurrent_range_query_length_counts[i] = num_in_range;
         concurrent_range_query_length_maxs[i] = max_key_in_range;
       }
+      // printf("\n");
 
       start_time = get_usecs();
       cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
@@ -1191,6 +1195,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
         concurrent_range_query_counts[i] = num_in_range;
         concurrent_range_query_maxs[i] = max_key_in_range;
       }
+      // printf("\n");
 #endif
 
       start_time = get_usecs();

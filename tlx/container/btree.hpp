@@ -1712,7 +1712,9 @@ public:
             n = inner->childid[slot];
         }
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
-        const LeafNode* old_leaf;
+
+        LeafNode* leaf_nonconst = const_cast<LeafNode*>(leaf);
+        LeafNode* old_leaf_nonconst;
 
         if constexpr(concurrent) {
             leaf->mutex_.lock();
@@ -1720,20 +1722,17 @@ public:
         }
 
         while (true) {
-            leaf->slotdata.unsorted_range(start, end, f);
+            leaf_nonconst->slotdata.unsorted_range(start, end, f);
 
             key_type leaf_max, leaf_second_max;
-            leaf->slotdata.get_max_2(&leaf_max, &leaf_second_max);
+            leaf_nonconst->slotdata.get_max_2(&leaf_max, &leaf_second_max);
 
-            if (key_less(leaf_max, end) && leaf->next_leaf != nullptr) {
-                old_leaf = leaf;
-
-                leaf = static_cast<const LeafNode*>(leaf->next_leaf);
-                leaf = const_cast< LeafNode*>(leaf);
-
+            if (key_less(leaf_max, end) && leaf_nonconst->next_leaf != nullptr) {
+                old_leaf_nonconst = leaf_nonconst;
+                leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf->mutex_.lock();
-                    old_leaf->mutex_.unlock();
+                    leaf_nonconst->mutex_.lock();
+                    old_leaf_nonconst->mutex_.unlock();
                 }
             } else {
                 break;
@@ -1741,7 +1740,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf->mutex_.unlock();
+            leaf_nonconst->mutex_.unlock();
         }
 
         return;
