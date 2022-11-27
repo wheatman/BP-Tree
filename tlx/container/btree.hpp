@@ -466,7 +466,10 @@ public:
         typename BTree::LeafNode* curr_leaf;
 
         //! Current key/data slot referenced
-        unsigned short curr_slot;
+        // unsigned short curr_slot;
+        using leafDS_type = typename std::conditional<is_pair, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type, typename pair_check<value_type>::rest>, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type>>::type;
+        typename leafDS_type::iterator leafds_iterator;
+        
 
         //! Friendly to the const_iterator, so it may access the two data items
         //! directly.
@@ -494,47 +497,50 @@ public:
         // *** Methods
         //! Default-Constructor of a mutable iterator
         iterator()
-            : curr_leaf(nullptr), curr_slot(0)
-        { }
+            : curr_leaf(nullptr)
+        { 
+        }
 
         //! Initializing-Constructor of a mutable iterator
-        iterator(typename BTree::LeafNode* l, unsigned short s)
-            : curr_leaf(l), curr_slot(s)
+        iterator(typename BTree::LeafNode* l)
+            : curr_leaf(l), leafds_iterator(l->slotdata.begin())
+        { }
+
+        iterator(typename BTree::LeafNode* l, bool end)
+            : curr_leaf(l), leafds_iterator(l->slotdata.end())
         { }
 
         //! Copy-constructor from a reverse iterator
-        iterator(const reverse_iterator& it) // NOLINT
-            : curr_leaf(it.curr_leaf), curr_slot(it.curr_slot)
-        { }
+        // iterator(const reverse_iterator& it) // NOLINT
+        //     : curr_leaf(it.curr_leaf), curr_slot(it.curr_slot)
+        // { }
 
-/*
+
         //! Dereference the iterator.
-        reference operator * () const {
-            return curr_leaf->slotdata[curr_slot];
+        auto operator * () const {
+            return *leafds_iterator;
         }
 
         //! Dereference the iterator.
         pointer operator -> () const {
-            return &curr_leaf->slotdata[curr_slot];
+            // return (*leafds_iterator);
         }
 
         //! Key of the current slot.
         const key_type& key() const {
-            return curr_leaf->key(curr_slot);
+            return leafds_iterator.key();
         }
 
         //! Prefix++ advance the iterator to the next slot.
         iterator& operator ++ () {
-            if (curr_slot + 1u < curr_leaf->slotuse) {
-                ++curr_slot;
-            }
-            else if (curr_leaf->next_leaf != nullptr) {
+            ++leafds_iterator;
+            if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf != nullptr) {
                 curr_leaf = curr_leaf->next_leaf;
-                curr_slot = 0;
+                leafds_iterator = curr_leaf->slotdata.begin();
             }
-            else {
+            else if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf == nullptr) {
                 // this is end()
-                curr_slot = curr_leaf->slotuse;
+                // curr_slot = curr_leaf->slotuse;
             }
 
             return *this;
@@ -544,67 +550,65 @@ public:
         iterator operator ++ (int) {
             iterator tmp = *this;   // copy ourselves
 
-            if (curr_slot + 1u < curr_leaf->slotuse) {
-                ++curr_slot;
-            }
-            else if (curr_leaf->next_leaf != nullptr) {
+            ++leafds_iterator;
+            if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf != nullptr) {
                 curr_leaf = curr_leaf->next_leaf;
-                curr_slot = 0;
+                leafds_iterator = curr_leaf->slotdata.begin();
             }
-            else {
+            else if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf == nullptr) {
                 // this is end()
-                curr_slot = curr_leaf->slotuse;
+                // curr_slot = curr_leaf->slotuse;
             }
 
             return tmp;
         }
 
-        //! Prefix-- backstep the iterator to the last slot.
-        iterator& operator -- () {
-            if (curr_slot > 0) {
-                --curr_slot;
-            }
-            else if (curr_leaf->prev_leaf != nullptr) {
-                curr_leaf = curr_leaf->prev_leaf;
-                curr_slot = curr_leaf->slotuse - 1;
-            }
-            else {
-                // this is begin()
-                curr_slot = 0;
-            }
+        // //! Prefix-- backstep the iterator to the last slot.
+        // iterator& operator -- () {
+        //     if (curr_slot > 0) {
+        //         --curr_slot;
+        //     }
+        //     else if (curr_leaf->prev_leaf != nullptr) {
+        //         curr_leaf = curr_leaf->prev_leaf;
+        //         curr_slot = curr_leaf->slotuse - 1;
+        //     }
+        //     else {
+        //         // this is begin()
+        //         curr_slot = 0;
+        //     }
 
-            return *this;
-        }
+        //     return *this;
+        // }
 
-        //! Postfix-- backstep the iterator to the last slot.
-        iterator operator -- (int) {
-            iterator tmp = *this;   // copy ourselves
+        // //! Postfix-- backstep the iterator to the last slot.
+        // iterator operator -- (int) {
+        //     iterator tmp = *this;   // copy ourselves
 
-            if (curr_slot > 0) {
-                --curr_slot;
-            }
-            else if (curr_leaf->prev_leaf != nullptr) {
-                curr_leaf = curr_leaf->prev_leaf;
-                curr_slot = curr_leaf->slotuse - 1;
-            }
-            else {
-                // this is begin()
-                curr_slot = 0;
-            }
+        //     if (curr_slot > 0) {
+        //         --curr_slot;
+        //     }
+        //     else if (curr_leaf->prev_leaf != nullptr) {
+        //         curr_leaf = curr_leaf->prev_leaf;
+        //         curr_slot = curr_leaf->slotuse - 1;
+        //     }
+        //     else {
+        //         // this is begin()
+        //         curr_slot = 0;
+        //     }
 
-            return tmp;
-        }
+        //     return tmp;
+        // }
 
         //! Equality of iterators.
         bool operator == (const iterator& x) const {
-            return (x.curr_leaf == curr_leaf) && (x.curr_slot == curr_slot);
+            return (x.curr_leaf == curr_leaf) && (x.leafds_iterator == leafds_iterator);
         }
 
         //! Inequality of iterators.
         bool operator != (const iterator& x) const {
-            return (x.curr_leaf != curr_leaf) || (x.curr_slot != curr_slot);
+            return (x.curr_leaf != curr_leaf) || (x.leafds_iterator != leafds_iterator);
         }
-	*/
+
     };
 
     //! STL-like read-only iterator object for B+ tree items. The iterator
@@ -1454,50 +1458,50 @@ public:
     //! Constructs a read/data-write iterator that points to the first slot in
     //! the first leaf of the B+ tree.
     iterator begin() {
-        return iterator(head_leaf_, 0);
+        return iterator(head_leaf_);
     }
 
     //! Constructs a read/data-write iterator that points to the first invalid
     //! slot in the last leaf of the B+ tree.
     iterator end() {
-        return iterator(tail_leaf_, tail_leaf_ ? tail_leaf_->slotuse : 0);
+        return iterator(tail_leaf_, true);
     }
 
     //! Constructs a read-only constant iterator that points to the first slot
     //! in the first leaf of the B+ tree.
-    const_iterator begin() const {
-        return const_iterator(head_leaf_, 0);
-    }
+    // const_iterator begin() const {
+    //     return const_iterator(head_leaf_, 0);
+    // }
 
     //! Constructs a read-only constant iterator that points to the first
     //! invalid slot in the last leaf of the B+ tree.
-    const_iterator end() const {
-        return const_iterator(tail_leaf_, tail_leaf_ ? tail_leaf_->slotuse : 0);
-    }
+    // const_iterator end() const {
+    //     return const_iterator(tail_leaf_, tail_leaf_ ? tail_leaf_->slotuse : 0);
+    // }
 
     //! Constructs a read/data-write reverse iterator that points to the first
     //! invalid slot in the last leaf of the B+ tree. Uses STL magic.
-    reverse_iterator rbegin() {
-        return reverse_iterator(end());
-    }
+    // reverse_iterator rbegin() {
+    //     return reverse_iterator(end());
+    // }
 
     //! Constructs a read/data-write reverse iterator that points to the first
     //! slot in the first leaf of the B+ tree. Uses STL magic.
-    reverse_iterator rend() {
-        return reverse_iterator(begin());
-    }
+    // reverse_iterator rend() {
+    //     return reverse_iterator(begin());
+    // }
 
     //! Constructs a read-only reverse iterator that points to the first
     //! invalid slot in the last leaf of the B+ tree. Uses STL magic.
-    const_reverse_iterator rbegin() const {
-        return const_reverse_iterator(end());
-    }
+    // const_reverse_iterator rbegin() const {
+    //     return const_reverse_iterator(end());
+    // }
 
     //! Constructs a read-only reverse iterator that points to the first slot
     //! in the first leaf of the B+ tree. Uses STL magic.
-    const_reverse_iterator rend() const {
-        return const_reverse_iterator(begin());
-    }
+    // const_reverse_iterator rend() const {
+    //     return const_reverse_iterator(begin());
+    // }
 
     //! \}
 
