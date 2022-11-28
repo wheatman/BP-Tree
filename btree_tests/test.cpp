@@ -1081,7 +1081,7 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
-  // std::vector<uint32_t> num_query_sizes{10000};
+  // std::vector<uint32_t> num_query_sizes{};
   std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
   uint64_t start_time, end_time;
@@ -1138,13 +1138,18 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     
 
     // TIME POINT QUERIES
+    std::vector<bool> found_count(NUM_QUERIES);
     start_time = get_usecs();
     cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
-      concurrent_map.exists(data[range_query_start_idxs[i]]);
+      found_count[i] = concurrent_map.exists(data[range_query_start_idxs[i]]);
     }
     end_time = get_usecs();
     if (cur_trial > 0) {find_times.push_back(end_time - start_time);}
-    printf("\tDone finding %lu elts in %lu\n",NUM_QUERIES, end_time - start_time);
+    int count_found = 0;
+    for (auto e : found_count) {
+      count_found += e ? 1 : 0;
+    }
+    printf("\tDone finding %lu elts in %lu, count = %d \n",NUM_QUERIES, end_time - start_time, count_found);
 
     // TIME RANGE QUERIES FOR ALL LENGTHS
     for (size_t query_size_i = 0; query_size_i < num_query_sizes.size(); query_size_i++) {
@@ -1564,13 +1569,13 @@ int main(int argc, char *argv[]) {
   outfile.close();
 
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
-
-  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
+  correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
+  correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+  correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv, trials);
+  correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv, trials);
+  correct = test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(n, num_queries, seed, write_csv, trials);
+  correct = test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 32768, 32768>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 65536, 65536>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(n, num_queries, seed, write_csv, trials);
