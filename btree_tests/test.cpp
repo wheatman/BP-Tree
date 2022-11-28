@@ -1081,8 +1081,8 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
-  // std::vector<uint32_t> num_query_sizes{};
-  std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+  std::vector<uint32_t> num_query_sizes{};
+  // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
   uint64_t start_time, end_time;
   std::vector<uint64_t> insert_times;
@@ -1742,8 +1742,9 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
 #endif
 
   for(int i = 0; i < num_trials; i++) {
+	  printf("\n*** trial %d ***\n", i);
       tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
-              std::allocator<T>, true> merged_tree, merged_unsorted_tree;
+              std::allocator<T>, true> merged_tree, merged_unsorted_tree, merged_tree_vector;
 
       std::vector<std::tuple<T, T>> vec1(max_size);
       std::vector<std::tuple<T, T>> vec2(max_size);
@@ -1753,7 +1754,6 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
 
       uint64_t start_time, end_time, end_merge_time;
       start_time = get_usecs();
-
       concurrent_map1.map_range_length(1, max_size, [&vec1, &count_elts1]([[maybe_unused]] auto el) {
                   vec1[count_elts1] = {el.first, el.second};
                   count_elts1++;
@@ -1765,6 +1765,38 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
                 });
       end_time = get_usecs();
       printf("\tDone sweeping %lu elts via sorted range in %lu\n", max_size, end_time - start_time);
+       std::vector<std::tuple<T, T>> vec3;
+       vec3.reserve(vec1.size() + vec2.size());
+
+       start_time = get_usecs();
+       std::merge(vec1.begin(), vec1.end(), vec2.begin(), vec2.end(), std::back_inserter(vec3));
+       end_time = get_usecs();
+
+       printf("\tstd merge of two vectors in %lu\n", end_time - start_time);
+
+       start_time = get_usecs();
+       cilk_for (int i = 0; i < vec3.size(); i++) {
+         merged_tree_vector.insert({std::get<0>(vec3[i]), std::get<1>(vec3[i])});
+       }
+       end_time = get_usecs();
+       printf("\tinsert merged vector into tree %lu\n", end_time - start_time);
+      
+       uint64_t count_elts_vector = 0;
+      merged_tree_vector.map_range_length(1, max_size*2, [&count_elts_vector]([[maybe_unused]] auto el) {
+                  count_elts_vector++;
+                });
+      printf("\t\telts in the tree from merged vector = %lu\n", count_elts_vector);
+       std::vector<std::tuple<T, T>> vec4;
+       vec4.reserve(vec1.size() + vec2.size());
+
+       start_time = get_usecs();
+       std::merge(concurrent_map1.begin(), concurrent_map1.end(), concurrent_map2.begin(), concurrent_map2.end(), std::back_inserter(vec4));
+       end_time = get_usecs();
+       printf("\ttree iterators with std merge %lu\n", end_time - start_time);
+
+       if(vec3 != vec4) {
+	       printf("merged vector and tree iterator vector not equal\n");
+       }
 
       /*
       auto iterator1 = vec1.begin();
@@ -1814,10 +1846,15 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
       cilk_for (int i = 0; i < vec2.size(); i++) {
         merged_unsorted_tree.insert({std::get<0>(vec2[i]), std::get<1>(vec2[i])});
       }
-
       end_merge_time = get_usecs();
+      
+       uint64_t count_elts_merged_unsorted_tree = 0;
+      merged_unsorted_tree.map_range_length(1, max_size*2, [&count_elts_merged_unsorted_tree]([[maybe_unused]] auto el) {
+                  count_elts_merged_unsorted_tree++;
+                });
+      printf("\t\telts in the tree from merge from vec1 and vec2 = %lu\n", count_elts_merged_unsorted_tree);
+     
       printf("\t\tDone concurrent merging sorted %lu elts via sorted_range output in %lu\n", max_size, end_merge_time - start_time);
-
   }
   return true;
 }
