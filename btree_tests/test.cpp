@@ -1766,7 +1766,7 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
       end_time = get_usecs();
       printf("\tDone sweeping %lu elts via sorted range in %lu\n", max_size, end_time - start_time);
 
-      
+      /*
       auto iterator1 = vec1.begin();
       auto iterator2 = vec2.begin();
 
@@ -1801,6 +1801,7 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
 
       end_merge_time = get_usecs();
       printf("\t\tDone serial merging sorted %lu elts via iterator in %lu\n", max_size, end_merge_time - start_time);
+      */
 
       // std::mt19937_64 eng(0);
       // std::shuffle(std::begin(vec1), std::end(vec1), eng);
@@ -1842,8 +1843,8 @@ int main(int argc, char *argv[]) {
   outfile.close();
 
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
-  bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
