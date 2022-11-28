@@ -1442,6 +1442,151 @@ test_iterator_merge_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, 
   return true;
 }
 
+template <class T, uint32_t internal_bytes>
+bool
+test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int num_trials) {
+
+  uint64_t start_time, end_time;
+  std::vector<uint64_t> insert_times;
+  // std::vector<uint64_t> find_times;
+
+  printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu\n",internal_bytes, SLOTS);
+
+  // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+
+  // std::vector<T> data =
+  //     create_random_data<T>(max_size, max_size * 2, seed);
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  
+  std::set<T> checker_set;
+  bool wrong;
+  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+                std::allocator<T>, true> concurrent_map1, concurrent_map2;
+
+  // TIME INSERTS
+  start_time = get_usecs();
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_map1.insert({data[i], 2*data[i]});
+  }
+  end_time = get_usecs();
+  printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+
+#if CORRECTNESS
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data[i]);
+  }
+
+  std::vector<T> elts_sorted;
+  for (auto key: checker_set) {
+    elts_sorted.push_back(key);
+  }
+  std::sort(elts_sorted.begin(), elts_sorted.end());
+#endif
+
+  std::seed_seq seed2{1};
+  std::vector<T> data2 =
+          create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed2);
+
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_map2.insert({data2[i], 2*data2[i]});
+  }
+  
+#if CORRECTNESS
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data2[i]);
+  }
+
+  std::vector<T> elts_sorted_merged;
+  for (auto key: checker_set) {
+    elts_sorted_merged.push_back(key);
+  }
+  std::sort(elts_sorted_merged.begin(), elts_sorted_merged.end());
+#endif
+
+  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+          std::allocator<T>, true> btree_type;
+
+  for(int i = 0; i < num_trials; i++) {
+      tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+              std::allocator<T>, true> merged_tree, merged_unsorted_tree;
+
+      std::vector<std::tuple<T, T>> vec1(max_size);
+      std::vector<std::tuple<T, T>> vec2(max_size);
+
+      uint64_t count_elts1 = 0;
+      uint64_t count_elts2 = 0;
+
+      uint64_t start_time, end_time, end_merge_time;
+      start_time = get_usecs();
+
+      concurrent_map1.map_range_length(1, max_size, [&vec1, &count_elts1]([[maybe_unused]] auto key, auto val) {
+                  vec1[count_elts1] = {key, val};
+                  count_elts1++;
+                });
+
+      concurrent_map2.map_range_length(1, max_size, [&vec2, &count_elts2]([[maybe_unused]] auto key, auto val) {
+                  vec2[count_elts2] = {key, val};
+                  count_elts2++;
+                });
+      end_time = get_usecs();
+      printf("\tDone sweeping %lu elts via sorted range in %lu\n", max_size, end_time - start_time);
+
+      
+      auto iterator1 = vec1.begin();
+      auto iterator2 = vec2.begin();
+
+      start_time = get_usecs();
+      while (iterator1 != vec1.end() && iterator2 != vec2.end()) {
+          auto val1 = *iterator1;
+          auto val2 = *iterator2;
+          if (std::get<0>(val1) < std::get<0>(val2)) {
+              merged_tree.insert({std::get<0>(val1), std::get<1>(val1)});
+              iterator1++;
+          } else {
+              merged_tree.insert({std::get<0>(val2), std::get<1>(val2)});
+              iterator2++;
+          }
+      }
+      if (iterator1 != vec1.end()) {
+          auto val1 = *iterator1;
+          while (iterator1 != vec1.end()) {
+              merged_tree.insert({std::get<0>(val1), std::get<1>(val1)});
+              iterator1++;
+          }
+      } else if (iterator2 != vec2.end()) {
+          auto val2 = *iterator2;
+          while (iterator2 != vec2.end()) {
+              merged_tree.insert({std::get<0>(val2), std::get<1>(val2)});
+              iterator2++;
+          }
+      } else {
+          std::cout << "Invalid scenario!\n";
+          exit(0);
+      }
+
+      end_merge_time = get_usecs();
+      printf("\t\tDone serial merging sorted %lu elts via iterator in %lu\n", max_size, end_merge_time - start_time);
+
+      // std::mt19937_64 eng(0);
+      // std::shuffle(std::begin(vec1), std::end(vec1), eng);
+      // std::shuffle(std::begin(vec2), std::end(vec2), eng);
+
+      start_time = get_usecs();
+      cilk_for (int i = 0; i < vec1.size(); i++) {
+        merged_unsorted_tree.insert({std::get<0>(vec1[i]), std::get<1>(vec1[i])});
+      }
+      cilk_for (int i = 0; i < vec2.size(); i++) {
+        merged_unsorted_tree.insert({std::get<0>(vec2[i]), std::get<1>(vec2[i])});
+      }
+
+      end_merge_time = get_usecs();
+      printf("\t\tDone concurrent merging sorted %lu elts via sorted_range output in %lu\n", max_size, end_merge_time - start_time);
+
+  }
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -1462,8 +1607,8 @@ int main(int argc, char *argv[]) {
   outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
 
-  // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
   if (!correct) {
     printf("got the wrong answer :(\n");
