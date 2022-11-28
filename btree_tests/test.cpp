@@ -1550,6 +1550,137 @@ void array_range_query_baseline(uint64_t max_size, uint64_t NUM_QUERIES, std::se
 
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 bool
+test_iterator_merge_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int num_trials) {
+
+  uint64_t start_time, end_time;
+  std::vector<uint64_t> insert_times;
+  // std::vector<uint64_t> find_times;
+
+  printf("\nRunning plain btree with internal bytes = %u with leaf bytes = %lu\n",internal_bytes, leaf_bytes);
+
+  // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+
+  // std::vector<T> data =
+  //     create_random_data<T>(max_size, max_size * 2, seed);
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  
+  std::set<T> checker_set;
+  bool wrong;
+  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+                std::allocator<T>, true> concurrent_map1, concurrent_map2;
+
+  // TIME INSERTS
+  start_time = get_usecs();
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_map1.insert({data[i], 2*data[i]});
+  }
+  end_time = get_usecs();
+  printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+
+#if CORRECTNESS
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data[i]);
+  }
+
+  std::vector<T> elts_sorted;
+  for (auto key: checker_set) {
+    elts_sorted.push_back(key);
+  }
+  std::sort(elts_sorted.begin(), elts_sorted.end());
+  auto it_correct = elts_sorted.begin();
+  auto it_leafds = concurrent_map1.begin();
+  int count = 0;
+
+  // check iterator correctness
+  while (it_correct != elts_sorted.end() && it_leafds != concurrent_map1.end()) {
+    T correct_key = *it_correct;
+    T leafds_key = it_leafds.key();
+    // auto leafds_key_deref = *it_leafds;
+    if (correct_key != leafds_key) {
+      printf("wrong iterator value, expected %lu but got %lu on count = %lu, iter = %lu\n", correct_key, leafds_key, count, it_leafds);
+      return false;
+    }
+    ++it_correct;
+    ++it_leafds;
+    count++;
+  }
+  if (it_correct != elts_sorted.end()) {
+    printf("leafds iterator counted too few elts\n");
+    return false;
+  }
+  if (it_leafds != concurrent_map1.end()) {
+    printf("leafds iterator counted too many elts\n");
+    return false;
+  } 
+  printf("\tcorrect iterator\n");
+#endif
+  std::seed_seq seed2{1};
+  std::vector<T> data2 =
+          create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed2);
+
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_map2.insert({data2[i], 2*data2[i]});
+  }
+  
+#if CORRECTNESS
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data2[i]);
+  }
+
+  std::vector<T> elts_sorted_merged;
+  for (auto key: checker_set) {
+    elts_sorted_merged.push_back(key);
+  }
+  std::sort(elts_sorted_merged.begin(), elts_sorted_merged.end());
+#endif
+
+  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+          std::allocator<T>, true> btree_type;
+
+  for(int i = 0; i < num_trials; i++) {
+      tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+              std::allocator<T>, true> merged_tree;
+      typename btree_type::iterator iterator1 = concurrent_map1.begin();
+      typename btree_type::iterator iterator2 = concurrent_map2.begin();
+
+      uint64_t start_time, end_time;
+      start_time = get_usecs();
+      while (iterator1 != concurrent_map1.end() && iterator2 != concurrent_map2.end()) {
+          auto val1 = *iterator1;
+          auto val2 = *iterator2;
+          if (std::get<0>(val1) < std::get<0>(val2)) {
+              merged_tree.insert({std::get<0>(val1), std::get<1>(val1)});
+              iterator1++;
+          } else {
+              merged_tree.insert({std::get<0>(val2), std::get<1>(val2)});
+              iterator2++;
+          }
+      }
+      if (iterator1 != concurrent_map1.end()) {
+          auto val1 = *iterator1;
+          while (iterator1 != concurrent_map1.end()) {
+              merged_tree.insert({std::get<0>(val1), std::get<1>(val1)});
+              iterator1++;
+          }
+      } else if (iterator2 != concurrent_map2.end()) {
+          auto val2 = *iterator2;
+          while (iterator2 != concurrent_map2.end()) {
+              merged_tree.insert({std::get<0>(val2), std::get<1>(val2)});
+              iterator2++;
+          }
+      } else {
+          std::cout << "Invalid scenario!\n";
+          exit(0);
+      }
+      end_time = get_usecs();
+      printf("\tDone merging %lu elts in %lu\n", max_size, end_time - start_time);
+  }
+  return true;
+}
+
+template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
+bool
 test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int num_trials) {
 
   uint64_t start_time, end_time;
@@ -1711,7 +1842,8 @@ int main(int argc, char *argv[]) {
   outfile.close();
 
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
-  bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
