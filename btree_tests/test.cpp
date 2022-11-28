@@ -1504,11 +1504,11 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
   std::sort(elts_sorted_merged.begin(), elts_sorted_merged.end());
 #endif
 
-  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
           std::allocator<T>, true> btree_type;
 
   for(int i = 0; i < num_trials; i++) {
-      tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T>,
+      tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
               std::allocator<T>, true> merged_tree, merged_unsorted_tree;
 
       std::vector<std::tuple<T, T>> vec1(max_size);
