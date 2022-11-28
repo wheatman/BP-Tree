@@ -1532,7 +1532,7 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
       end_time = get_usecs();
       printf("\tDone sweeping %lu elts via sorted range in %lu\n", max_size, end_time - start_time);
 
-      
+      /*      
       auto iterator1 = vec1.begin();
       auto iterator2 = vec2.begin();
 
@@ -1567,7 +1567,8 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
 
       end_merge_time = get_usecs();
       printf("\t\tDone serial merging sorted %lu elts via iterator in %lu\n", max_size, end_merge_time - start_time);
-
+      */
+      
       // std::mt19937_64 eng(0);
       // std::shuffle(std::begin(vec1), std::end(vec1), eng);
       // std::shuffle(std::begin(vec2), std::end(vec2), eng);
