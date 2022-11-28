@@ -975,8 +975,8 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
-  // std::vector<uint32_t> num_query_sizes{50};
-  std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+  std::vector<uint32_t> num_query_sizes{};
+  // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
   uint64_t start_time, end_time;
   std::vector<uint64_t> insert_times;
@@ -1039,15 +1039,19 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     if (cur_trial > 0) {insert_times.push_back(end_time - start_time);}
     printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
     
-
     // TIME POINT QUERIES
+    std::vector<bool> found_count(NUM_QUERIES);
     start_time = get_usecs();
     cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
-      concurrent_map.exists(data[range_query_start_idxs[i]]);
+      found_count[i] = concurrent_map.exists(data[range_query_start_idxs[i]]);
     }
     end_time = get_usecs();
     if (cur_trial > 0) {find_times.push_back(end_time - start_time);}
-    printf("\tDone finding %lu elts in %lu\n",NUM_QUERIES, end_time - start_time);
+    int count_found = 0;
+    for (auto e : found_count) {
+      count_found += e ? 1 : 0;
+    }
+    printf("\tDone finding %lu elts in %lu, count = %d \n",NUM_QUERIES, end_time - start_time, count_found);
 
     // TIME RANGE QUERIES FOR ALL LENGTHS
     for (size_t query_size_i = 0; query_size_i < num_query_sizes.size(); query_size_i++) {
@@ -1458,8 +1462,8 @@ int main(int argc, char *argv[]) {
   outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
 
-  bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
   if (!correct) {
     printf("got the wrong answer :(\n");
