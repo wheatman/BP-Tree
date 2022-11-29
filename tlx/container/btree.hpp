@@ -2745,10 +2745,10 @@ public:
     //! B-tree above them. The tree must be empty when calling this function.
     template <typename Iterator>
     void bulk_load(Iterator ibegin, Iterator iend) {
-        TLX_BTREE_ASSERT(empty());
-				printf("BULK LOAD NOT IMPLEMENTED\n");                
-				return; 
-				/*
+        // TLX_BTREE_ASSERT(empty());
+		// 		printf("BULK LOAD NOT IMPLEMENTED\n");                
+		// 		return; 
+				// /*
         stats_.size = iend - ibegin;
 
         // calculate number of leaves needed, round up.
@@ -2762,6 +2762,9 @@ public:
                         " items per leaf.");
 
         Iterator it = ibegin;
+        // save inner nodes and maxkey for next level.
+        key_type* leaf_max_keys[num_leaves];
+
         for (size_t i = 0; i < num_leaves; ++i)
         {
             // allocate new leaf node
@@ -2769,10 +2772,13 @@ public:
 
             // copy keys or (key,value) pairs into leaf nodes, uses template
             // switch leaf->set_slot().
-            leaf->slotuse = static_cast<int>(num_items / (num_leaves - i));
-            for (size_t s = 0; s < leaf->slotuse; ++s, ++it)
-							printf("BULK LOAD NOT IMPLEMENTED\n");                
-							// leaf->set_slot(s, *it);
+            size_t num_leaf_elts = num_items / (num_leaves - i);
+#if MANUAL_GET_NUM_ELTS
+            leaf->manual_slotuse = static_cast<int>(num_items / (num_leaves - i));
+#endif
+            key_type leaf_max;
+            leaf->slotdata.bulk_load(it,ibegin, num_leaf_elts, &leaf_max);
+            leaf_max_keys[i] = &leaf_max;
 
             if (tail_leaf_ != nullptr) {
                 tail_leaf_->next_leaf = leaf;
@@ -2783,7 +2789,10 @@ public:
             }
             tail_leaf_ = leaf;
 
-            num_items -= leaf->slotuse;
+            num_items -= num_leaf_elts;
+            it += num_leaf_elts;
+            printf("\tOn leaf %lu, inserted %lu, curr it position is %lu, max_key = %lu\n", i, num_leaf_elts, it - ibegin, leaf_max);
+            // it += num_leaf_elts;
         }
 
         TLX_BTREE_ASSERT(it == iend && num_items == 0);
@@ -2807,10 +2816,11 @@ public:
                         " leaves per inner node.");
 
         // save inner nodes and maxkey for next level.
-        typedef std::pair<InnerNode*, const key_type*> nextlevel_type;
+        typedef std::pair<InnerNode*, key_type*> nextlevel_type;
         nextlevel_type* nextlevel = new nextlevel_type[num_parents];
 
         LeafNode* leaf = head_leaf_;
+        size_t count_leaves = 0;
         for (size_t i = 0; i < num_parents; ++i)
         {
             // allocate new inner node at level 1
@@ -2824,18 +2834,20 @@ public:
             // copy last key from each leaf and set child
             for (unsigned short s = 0; s < n->slotuse; ++s)
             {
-                n->slotkey[s] = leaf->key(leaf->slotuse - 1);
+                n->slotkey[s] = *leaf_max_keys[count_leaves];
                 n->childid[s] = leaf;
                 leaf = leaf->next_leaf;
+                count_leaves++;
             }
             n->childid[n->slotuse] = leaf;
 
             // track max key of any descendant.
             nextlevel[i].first = n;
-            nextlevel[i].second = &leaf->key(leaf->slotuse - 1);
+            nextlevel[i].second = leaf_max_keys[count_leaves];
 
             leaf = leaf->next_leaf;
             num_leaves -= n->slotuse + 1;
+            count_leaves++;
         }
 
         TLX_BTREE_ASSERT(leaf == nullptr && num_leaves == 0);
@@ -2890,7 +2902,7 @@ public:
         delete[] nextlevel;
 
         if (self_verify) verify();
-    */
+    // */
 		}
 
     //! \}
