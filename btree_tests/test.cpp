@@ -1697,7 +1697,7 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
   typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
           std::allocator<T>, true> btree_type;
 
-  for(int trial = 0; trial < num_trials; trial++) {
+  for(int trial = 0; trial <= num_trials; trial++) {
     // tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
     //         std::allocator<T>, true> merged_tree;
     
