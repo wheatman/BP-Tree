@@ -1859,6 +1859,143 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
   return true;
 }
 
+template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
+bool
+test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::seed_seq &seed, bool write_csv, int num_trials) {
+  uint64_t start_time, end_time;
+
+  uint64_t num_chunks = 48 * num_chunk_multiplier;
+  uint64_t chunk_size = std::numeric_limits<T>::max() / num_chunks;
+
+  printf("\nRunning plain btree with internal bytes = %u with leaf bytes = %lu\n",internal_bytes, leaf_bytes);
+
+  std::vector<T> data =
+      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  
+  std::set<T> checker_set;
+  bool wrong;
+  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+                std::allocator<T>, true> concurrent_map1, concurrent_map2;
+
+  // TIME INSERTS
+  start_time = get_usecs();
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_map1.insert({data[i], 2*data[i]});
+  }
+  end_time = get_usecs();
+  printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+
+#if CORRECTNESS
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data[i]);
+  }
+
+  std::vector<T> elts_sorted;
+  for (auto key: checker_set) {
+    elts_sorted.push_back(key);
+  }
+  std::sort(elts_sorted.begin(), elts_sorted.end());
+#endif
+
+  std::seed_seq seed2{1};
+  std::vector<T> data2 =
+          create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed2);
+
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_map2.insert({data2[i], 2*data2[i]});
+  }
+  
+#if CORRECTNESS
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data2[i]);
+  }
+
+  std::vector<std::tuple<T,T>> elts_sorted_merged;
+  for (auto key: checker_set) {
+    elts_sorted_merged.push_back({key, 2 * key});
+  }
+  std::sort(elts_sorted_merged.begin(), elts_sorted_merged.end());
+#endif
+
+  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+          std::allocator<T>, true> btree_type;
+
+  for(int trial = 0; trial < num_trials; trial++) {
+    // tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+    //         std::allocator<T>, true> merged_tree;
+    
+    std::vector<std::vector<std::tuple<T, T>>> merged_vecs(num_chunks);
+    std::vector<uint64_t> merged_vecs_prefix_sums(num_chunks + 1);
+    merged_vecs_prefix_sums[0] = 0;
+    
+    start_time = get_usecs();
+
+    cilk_for (uint64_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
+      std::vector<std::tuple<T, T>> vec1, vec2;
+      uint64_t start_key = 1 + chunk_idx * chunk_size;
+      uint64_t end_key = (chunk_idx == num_chunks - 1) ? std::numeric_limits<T>::max() : 1 + (chunk_idx + 1) * chunk_size;
+
+      uint64_t count_elts1 = 0;
+      uint64_t count_elts2 = 0;
+
+      uint64_t start_time, end_time, end_merge_time;
+      start_time = get_usecs();
+
+      concurrent_map1.map_range(start_key, end_key, [&vec1, &count_elts1]([[maybe_unused]] auto el) {
+                  vec1.push_back({el.first, el.second});
+                  count_elts1++;
+                });
+      concurrent_map2.map_range(start_key, end_key, [&vec2, &count_elts2]([[maybe_unused]] auto el) {
+                  vec2.push_back({el.first, el.second});
+                  count_elts2++;
+                });
+      std::vector<std::tuple<T, T>> merged_chunk;
+      // merged_chunk.reserve(count_elts1 + count_elts2);
+
+      std::merge(vec1.begin(), vec1.end(), vec2.begin(), vec2.end(), std::back_inserter(merged_chunk));
+      merged_vecs[chunk_idx] = merged_chunk;
+      merged_vecs_prefix_sums[chunk_idx + 1] = merged_chunk.size();
+    }
+
+    end_time = get_usecs();
+    printf("\tDone merging chunks for %lu elts via sorted range end in %lu\n", max_size, end_time - start_time);
+
+
+    start_time = get_usecs();
+    for (size_t chunk_idx = 1; chunk_idx < num_chunks + 1; chunk_idx++) {
+      merged_vecs_prefix_sums[chunk_idx] += merged_vecs_prefix_sums[chunk_idx - 1];
+    }
+    end_time = get_usecs();
+    uint64_t summing_time = end_time - start_time;
+    
+    std::vector<std::tuple<T, T>> concat_merged(merged_vecs_prefix_sums[num_chunks]);
+
+    start_time = get_usecs();
+    cilk_for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
+      uint64_t count = 0;
+      for (uint64_t index = merged_vecs_prefix_sums[chunk_idx]; index < merged_vecs_prefix_sums[chunk_idx + 1]; index++) {
+        concat_merged[index] = merged_vecs[chunk_idx][count];
+        count++;
+      }
+    }
+    end_time = get_usecs();
+    printf("\tDone concating chunks for %lu elts via sorted range end in %lu\n", max_size, summing_time + end_time - start_time);
+
+#if CORRECTNESS
+    if (elts_sorted_merged != concat_merged) {
+      printf("\tMerged vector not correct\n");
+      for (uint64_t i = 0; i < elts_sorted_merged.size(); i++) {
+        if (elts_sorted_merged[i] != concat_merged[i]) {
+          printf("wrong at index %lu , correct = %lu, wrong = %lu\n", i, std::get<0>(elts_sorted_merged[i]), std::get<0>(concat_merged[i]));
+        }
+      }
+      return false;
+    }
+#endif
+  }
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -1881,7 +2018,8 @@ int main(int argc, char *argv[]) {
 
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
-  bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
