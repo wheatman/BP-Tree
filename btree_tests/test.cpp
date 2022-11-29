@@ -975,8 +975,8 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
-  std::vector<uint32_t> num_query_sizes{};
-  // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+  // std::vector<uint32_t> num_query_sizes{1000};
+  std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
   uint64_t start_time, end_time;
   std::vector<uint64_t> insert_times;
@@ -1250,6 +1250,91 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
         }
         if (correct_range_query_maxs[i] != concurrent_range_query_maxs[i]) {
           printf("wrong concurrent range query max, expected %lu, got %lu\n", correct_range_query_maxs[i], concurrent_range_query_maxs[i]);
+          wrong = true;
+        }
+      }
+      if (wrong) {
+        return false;
+      } 
+  #endif
+  
+#if CORRECTNESS
+      std::vector<T> concurrent_range_query_sorted_end_maxs(NUM_QUERIES);
+      std::vector<uint64_t> concurrent_range_query_sorted_end_counts(NUM_QUERIES);
+#endif
+      std::vector<T> concurrent_range_query_sorted_end_key_sums(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_sorted_end_val_sums(NUM_QUERIES);
+
+#if CORRECTNESS
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start, end;
+        start = checker_sorted[range_query_start_idxs[i]];
+        end = concurrent_range_query_length_maxs[i];
+        if (range_query_lengths[i] != 0) {
+          end++;
+        }
+        uint64_t num_in_range = 0;
+        T max_key_in_range = start;
+        concurrent_map.map_range_sorted_end(start, end, [&num_in_range, &max_key_in_range]([[maybe_unused]] auto key, auto val) {
+                  num_in_range += 1;
+                  if (key > max_key_in_range) {
+                    max_key_in_range = key;
+                  }
+                });
+        concurrent_range_query_sorted_end_counts[i] = num_in_range;
+        concurrent_range_query_sorted_end_maxs[i] = max_key_in_range;
+      }
+      // printf("\n");
+#endif
+
+      start_time = get_usecs();
+      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start, end;
+  #if CORRECTNESS
+        start = checker_sorted[range_query_start_idxs[i]];
+  #else 
+        start = data[range_query_start_idxs[i]];
+  #endif
+        end = concurrent_range_query_length_maxs[i];
+        if (range_query_lengths[i] != 0) {
+          end++;
+        }
+
+        T sum_key_range = 0;
+        T sum_val_range = 0;
+        concurrent_map.map_range_sorted_end(start, end, [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                  sum_key_range += key;
+                  sum_val_range += val;
+                });
+        concurrent_range_query_sorted_end_key_sums[i] = sum_key_range;
+        concurrent_range_query_sorted_end_val_sums[i] = sum_val_range;
+      }
+      end_time = get_usecs();
+      if (cur_trial > 0) {unsorted_range_query_times_by_size.push_back(end_time - start_time);}
+      printf("\t\t did sorted with end range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+      sum_all_keys = 0;
+      for (auto e: concurrent_range_query_sorted_end_key_sums) {
+        sum_all_keys += e;
+      }
+      sum_all_vals = 0;
+      for (auto e: concurrent_range_query_sorted_end_val_sums) {
+        sum_all_vals += e;
+      }
+      if (sum_all_keys * 2 != sum_all_vals) {
+        printf("\t\t\t wrong, sum keys * 2 not equal to sum vals\n");
+        // return false;
+      }
+      printf("\t\t\t sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
+  #if CORRECTNESS
+      // correctness check of concurrent 
+      wrong = false;
+      for (size_t i = 0; i < NUM_QUERIES; i++) {
+        if (correct_range_query_counts[i] != concurrent_range_query_sorted_end_counts[i]) {
+          printf("wrong concurrent sorted end range query count, expected %lu, got %lu\n", correct_range_query_counts[i], concurrent_range_query_sorted_end_counts[i]);
+          wrong = true;
+        }
+        if (correct_range_query_maxs[i] != concurrent_range_query_sorted_end_maxs[i]) {
+          printf("wrong concurrent sorted end range query max, expected %lu, got %lu\n", correct_range_query_maxs[i], concurrent_range_query_sorted_end_maxs[i]);
           wrong = true;
         }
       }
@@ -1608,9 +1693,9 @@ int main(int argc, char *argv[]) {
   outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
 
-  bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
   if (!correct) {
     printf("got the wrong answer :(\n");

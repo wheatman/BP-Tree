@@ -1750,6 +1750,70 @@ public:
         return;
     }
 
+    template <class F>
+    void map_range_sorted_end(key_type start, key_type end, F f) {
+        int cpuid = 0;
+        ReaderWriterLock *parent_lock = nullptr;
+        if constexpr(concurrent) {
+            cpuid = sched_getcpu();
+            mutex.read_lock(cpuid);
+            parent_lock = &mutex;
+        }
+        const node* n = root_;
+        if (!n) {
+            if constexpr(concurrent) {
+                mutex.read_unlock(cpuid);
+            }
+            return;
+        }
+
+        while (!n->is_leafnode())
+        {
+            const InnerNode* inner = static_cast<const InnerNode*>(n);
+            if constexpr(concurrent) {
+                inner->mutex_.read_lock(cpuid);
+                parent_lock->read_unlock(cpuid);
+                parent_lock = &(inner->mutex_);
+            }
+            unsigned short slot = find_lower(inner, start);
+
+            n = inner->childid[slot];
+        }
+        const LeafNode* leaf = static_cast<const LeafNode*>(n);
+
+        LeafNode* leaf_nonconst = const_cast<LeafNode*>(leaf);
+        LeafNode* old_leaf_nonconst;
+
+        if constexpr(concurrent) {
+            leaf->mutex_.lock();
+            parent_lock->read_unlock(cpuid);
+        }
+
+        while (true) {
+            leaf_nonconst->slotdata.sorted_range_end(start, end, f);
+
+            key_type leaf_max, leaf_second_max;
+            leaf_nonconst->slotdata.get_max_2(&leaf_max, &leaf_second_max);
+
+            if (key_less(leaf_max, end) && leaf_nonconst->next_leaf != nullptr) {
+                old_leaf_nonconst = leaf_nonconst;
+                leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
+                if constexpr (concurrent) {
+                    leaf_nonconst->mutex_.lock();
+                    old_leaf_nonconst->mutex_.unlock();
+                }
+            } else {
+                break;
+            }
+        }
+
+        if constexpr (concurrent) {
+            leaf_nonconst->mutex_.unlock();
+        }
+
+        return;
+    }
+
     //! Non-STL function that applies read-only function to all elts in range [start, end) by key
     template <class F>
     void map_range_length(key_type start, uint64_t length, F f) const {
