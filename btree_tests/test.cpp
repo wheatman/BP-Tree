@@ -1935,22 +1935,16 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
       uint64_t start_key = 1 + chunk_idx * chunk_size;
       uint64_t end_key = (chunk_idx == num_chunks - 1) ? std::numeric_limits<T>::max() : 1 + (chunk_idx + 1) * chunk_size;
 
-      uint64_t count_elts1 = 0;
-      uint64_t count_elts2 = 0;
-
       uint64_t start_time, end_time, end_merge_time;
       start_time = get_usecs();
 
-      concurrent_map1.map_range(start_key, end_key, [&vec1, &count_elts1]([[maybe_unused]] auto el) {
-                  vec1.push_back({el.first, el.second});
-                  count_elts1++;
+      concurrent_map1.map_range(start_key, end_key, [&vec1](auto el) {
+                  vec1.emplace_back(std::pair<T,T>{el.first, el.second});
                 });
-      concurrent_map2.map_range(start_key, end_key, [&vec2, &count_elts2]([[maybe_unused]] auto el) {
-                  vec2.push_back({el.first, el.second});
-                  count_elts2++;
+      concurrent_map2.map_range(start_key, end_key, [&vec2](auto el) {
+                  vec2.emplace_back(std::pair<T,T>{el.first, el.second});
                 });
       std::vector<std::tuple<T, T>> merged_chunk;
-      // merged_chunk.reserve(count_elts1 + count_elts2);
 
       std::merge(vec1.begin(), vec1.end(), vec2.begin(), vec2.end(), std::back_inserter(merged_chunk));
       merged_vecs[chunk_idx] = merged_chunk;
@@ -1972,10 +1966,8 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
 
     start_time = get_usecs();
     cilk_for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-      uint64_t count = 0;
       for (uint64_t index = merged_vecs_prefix_sums[chunk_idx]; index < merged_vecs_prefix_sums[chunk_idx + 1]; index++) {
-        concat_merged[index] = merged_vecs[chunk_idx][count];
-        count++;
+        concat_merged[index] = merged_vecs[chunk_idx][index - merged_vecs_prefix_sums[chunk_idx]];
       }
     }
     end_time = get_usecs();
@@ -2131,8 +2123,8 @@ int main(int argc, char *argv[]) {
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
-  bool correct = test_bulk_load_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_bulk_load_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
