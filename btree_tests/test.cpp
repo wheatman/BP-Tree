@@ -1780,21 +1780,21 @@ test_bulk_load_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int n
   std::vector<uint64_t> insert_times;
   std::vector<uint64_t> find_times;
 
+  std::vector<T> data = create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  std::vector<std::tuple<T, T>> bulk_data;
+
+  std::set<T> checker_set;
+  bool wrong;
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data[i]);
+  }
+  for (auto e : checker_set) {
+    bulk_data.push_back({e, 2*e});
+  }
+  std::sort(bulk_data.begin(), bulk_data.end());
+
   for (int cur_trial = 0; cur_trial <= num_trials; cur_trial++) {
     printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu , trial = %lu\n",internal_bytes, SLOTS, cur_trial);
-
-    std::vector<T> data = create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
-    std::vector<std::tuple<T, T>> bulk_data;
-
-    std::set<T> checker_set;
-    bool wrong;
-    for (uint32_t i = 0; i < max_size; i++) {
-      checker_set.insert(data[i]);
-    }
-    for (auto e : checker_set) {
-      bulk_data.push_back({e, 2*e});
-    }
-    std::sort(bulk_data.begin(), bulk_data.end());
 
   #if CORRECTNESS
 

@@ -2778,7 +2778,7 @@ public:
             leaf->manual_slotuse = static_cast<int>(num_items / (num_leaves - i));
 #endif
             key_type leaf_max;
-            leaf->slotdata.bulk_load(it,ibegin, num_leaf_elts, &leaf_max);
+            leaf->slotdata.bulk_load(it, num_leaf_elts, &leaf_max);
             leaf_max_keys[i] = leaf_max;
 
             if (tail_leaf_ != nullptr) {
@@ -2792,7 +2792,7 @@ public:
 
             num_items -= num_leaf_elts;
             it += num_leaf_elts;
-            printf("\tOn leaf %lu, inserted %lu, curr it position is %lu, max_key = %lu\n", i, num_leaf_elts, it - ibegin, leaf_max);
+            // printf("\tOn leaf %lu, inserted %lu, curr it position is %lu, max_key = %lu\n", i, num_leaf_elts, it - ibegin, leaf_max);
             // it += num_leaf_elts;
         }
 
