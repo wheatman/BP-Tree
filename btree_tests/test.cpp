@@ -1701,6 +1701,7 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
     // tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
     //         std::allocator<T>, true> merged_tree;
     
+    // std::vector<std::vector<std::tuple<T, T>>*> merged_vecs(num_chunks);
     std::vector<std::vector<std::tuple<T, T>>> merged_vecs(num_chunks);
     std::vector<uint64_t> merged_vecs_prefix_sums(num_chunks + 1);
     merged_vecs_prefix_sums[0] = 0;
@@ -1712,25 +1713,17 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
       uint64_t start_key = 1 + chunk_idx * chunk_size;
       uint64_t end_key = (chunk_idx == num_chunks - 1) ? std::numeric_limits<T>::max() : 1 + (chunk_idx + 1) * chunk_size;
 
-      uint64_t count_elts1 = 0;
-      uint64_t count_elts2 = 0;
-
-      uint64_t start_time, end_time, end_merge_time;
-      start_time = get_usecs();
-
-      concurrent_map1.map_range_sorted_end(start_key, end_key, [&vec1, &count_elts1]([[maybe_unused]] auto key, auto val) {
-                  vec1.push_back({key, val});
-                  count_elts1++;
+      concurrent_map1.map_range_sorted_end(start_key, end_key, [&vec1](auto key, auto val) {
+                  vec1.emplace_back(std::tuple<T, T>{key, val});
                 });
-      concurrent_map2.map_range_sorted_end(start_key, end_key, [&vec2, &count_elts2]([[maybe_unused]] auto key, auto val) {
-                  vec2.push_back({key, val});
-                  count_elts2++;
+      concurrent_map2.map_range_sorted_end(start_key, end_key, [&vec2](auto key, auto val) {
+                  vec2.emplace_back(std::tuple<T, T>{key, val});
                 });
       std::vector<std::tuple<T, T>> merged_chunk;
-      // merged_chunk.reserve(count_elts1 + count_elts2);
 
       std::merge(vec1.begin(), vec1.end(), vec2.begin(), vec2.end(), std::back_inserter(merged_chunk));
       merged_vecs[chunk_idx] = merged_chunk;
+      // merged_vecs[chunk_idx] = &merged_chunk;
       merged_vecs_prefix_sums[chunk_idx + 1] = merged_chunk.size();
     }
 
@@ -1749,10 +1742,11 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
 
     start_time = get_usecs();
     cilk_for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-      uint64_t count = 0;
       for (uint64_t index = merged_vecs_prefix_sums[chunk_idx]; index < merged_vecs_prefix_sums[chunk_idx + 1]; index++) {
-        concat_merged[index] = merged_vecs[chunk_idx][count];
-        count++;
+        // std::vector<std::tuple<T, T>>& vecRef = *merged_vecs[chunk_idx];
+        // printf("chunk = %lu, vec size = %lu, real size = %lu\n", chunk_idx, vecRef.size(), merged_vecs_prefix_sums[chunk_idx + 1] - merged_vecs_prefix_sums[chunk_idx]);
+        // concat_merged[index] = vecRef[index - merged_vecs_prefix_sums[chunk_idx]];
+        concat_merged[index] = merged_vecs[chunk_idx][index - merged_vecs_prefix_sums[chunk_idx]];
       }
     }
     end_time = get_usecs();
@@ -1905,8 +1899,8 @@ int main(int argc, char *argv[]) {
   outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
 
-  bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
