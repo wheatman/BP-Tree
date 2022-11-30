@@ -19,7 +19,7 @@
 #define cilk_for for
 #endif
 
-#define CORRECTNESS 0
+// #define CORRECTNESS 0
 
 static long get_usecs() {
   struct timeval st;
@@ -1996,6 +1996,118 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
   return true;
 }
 
+template <class T, uint32_t internal_bytes, uint64_t leaf_bytes>
+bool
+test_bulk_load_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int num_trials) {
+  uint64_t start_time, end_time;
+  std::vector<uint64_t> insert_times;
+  std::vector<uint64_t> find_times;
+
+  std::vector<T> data = create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+  std::vector<std::pair<T, T>> bulk_data;
+
+  std::set<T> checker_set;
+  bool wrong;
+  for (uint32_t i = 0; i < max_size; i++) {
+    checker_set.insert(data[i]);
+  }
+  for (auto e : checker_set) {
+    bulk_data.push_back({e, 2*e});
+  }
+  std::sort(bulk_data.begin(), bulk_data.end());
+
+  for (int cur_trial = 0; cur_trial <= num_trials; cur_trial++) {
+    printf("\nRunning plain btree with internal bytes = %u with leaf_bytes %lu , trial = %lu\n",internal_bytes, leaf_bytes, cur_trial);
+
+  #if CORRECTNESS
+
+    std::vector<T> checker_sorted;
+    for (auto key: checker_set) {
+      checker_sorted.push_back(key);
+    }
+    std::sort(checker_sorted.begin(), checker_sorted.end());
+  #endif
+
+    // output to tree_type, internal bytes, leaf bytes, num_inserted, insert_time, num_finds, find_time, num_range_queries, range_time_maxlen_{}*
+
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+                  std::allocator<T>, true> concurrent_map, concurrent_map_bulk_load;
+
+    // TIME INSERTS
+    start_time = get_usecs();
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_map.insert({data[i], 2*data[i]});
+    }
+    end_time = get_usecs();
+    // if (cur_trial > 0) {insert_times.push_back(end_time - start_time);}
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+
+    // TIME BULK LOAD
+    start_time = get_usecs();
+    concurrent_map_bulk_load.bulk_load(bulk_data.begin(), bulk_data.end());
+    end_time = get_usecs();
+    // if (cur_trial > 0) {insert_times.push_back(end_time - start_time);}
+    printf("\tDone bulk loading %lu elts in %lu\n",max_size, end_time - start_time);
+
+#if CORRECTNESS
+    std::vector<int> found_count(max_size);
+    std::vector<int> found_count_bulk(max_size);
+
+    T sum_in_tree = 0;
+    uint64_t num_in_tree = 0;
+    concurrent_map.map_range_length(1, max_size, [&sum_in_tree, &num_in_tree]([[maybe_unused]] auto el) {
+                  sum_in_tree += el.first;
+                  num_in_tree++;
+    });
+    T sum_in_tree_bulk = 0;
+    uint64_t num_in_tree_bulk = 0;
+    concurrent_map_bulk_load.map_range_length(1, max_size, [&sum_in_tree_bulk, &num_in_tree_bulk]([[maybe_unused]] auto el) {
+                  sum_in_tree_bulk += el.first;
+                  num_in_tree_bulk++;
+    });
+    printf("Did map range, sum regular inserts = %lu elts, bulk load = %lu elts\n", sum_in_tree, sum_in_tree_bulk);
+    printf("Did map range, num regular inserts = %lu elts, bulk load = %lu elts\n", num_in_tree, num_in_tree_bulk);
+
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      found_count[i] = concurrent_map.exists(data[i]) ? 1 : 0;
+      if (!found_count[i]) {
+        printf("Elt doesn't exist: key = %lu\n", data[i]);
+      }
+    }
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      found_count_bulk[i] = concurrent_map_bulk_load.exists(data[i]) ? 1 : 0;
+      if (!found_count_bulk[i]) {
+        printf("Elt doesn't exist bulk: key = %lu\n", data[i]);
+      }
+    }
+
+    for (uint64_t i = 0; i < max_size; i ++) {
+      if (!found_count[i]) {
+        printf("Elt doesn't exist serial check: key = %lu\n", data[i]);
+      }
+      if (!found_count_bulk[i]) {
+        printf("Elt doesn't exist bulk serial check: key = %lu\n", data[i]);
+      }
+    }
+    int count_found = 0;
+    int count_found_bulk = 0;
+    for (auto e : found_count) {
+      count_found += e ? 1 : 0;
+    }
+    for (auto e : found_count_bulk) {
+      count_found_bulk += e ? 1 : 0;
+    }
+    if (count_found != count_found_bulk) {
+      printf("Did not find some elements, regular inserts = %lu elts, bulk load = %lu elts\n", count_found, count_found_bulk);
+      return false;
+    } 
+    printf("Correct bulk load\n");
+    return true;
+#endif
+  }
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -2019,7 +2131,8 @@ int main(int argc, char *argv[]) {
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
-  bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_bulk_load_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
