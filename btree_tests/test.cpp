@@ -1827,14 +1827,44 @@ test_bulk_load_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int n
     printf("\tDone bulk loading %lu elts in %lu\n",max_size, end_time - start_time);
 
 #if CORRECTNESS
-    // TIME POINT QUERIES
-    std::vector<bool> found_count(max_size);
-    std::vector<bool> found_count_bulk(max_size);
+    std::vector<int> found_count(max_size);
+    std::vector<int> found_count_bulk(max_size);
+
+    T sum_in_tree = 0;
+    uint64_t num_in_tree = 0;
+    concurrent_map.map_range_length(1, max_size, [&sum_in_tree, &num_in_tree]([[maybe_unused]] auto key, auto val) {
+                  sum_in_tree += key;
+                  num_in_tree++;
+    });
+    T sum_in_tree_bulk = 0;
+    uint64_t num_in_tree_bulk = 0;
+    concurrent_map_bulk_load.map_range_length(1, max_size, [&sum_in_tree_bulk, &num_in_tree_bulk]([[maybe_unused]] auto key, auto val) {
+                  sum_in_tree_bulk += key;
+                  num_in_tree_bulk++;
+    });
+    printf("Did map range, sum regular inserts = %lu elts, bulk load = %lu elts\n", sum_in_tree, sum_in_tree_bulk);
+    printf("Did map range, num regular inserts = %lu elts, bulk load = %lu elts\n", num_in_tree, num_in_tree_bulk);
+
     cilk_for(uint32_t i = 0; i < max_size; i++) {
-      found_count[i] = concurrent_map.exists(data[i]);
+      found_count[i] = concurrent_map.exists(data[i]) ? 1 : 0;
+      if (!found_count[i]) {
+        printf("Elt doesn't exist: key = %lu\n", data[i]);
+      }
     }
     cilk_for(uint32_t i = 0; i < max_size; i++) {
-      found_count_bulk[i] = concurrent_map_bulk_load.exists(data[i]);
+      found_count_bulk[i] = concurrent_map_bulk_load.exists(data[i]) ? 1 : 0;
+      if (!found_count_bulk[i]) {
+        printf("Elt doesn't exist bulk: key = %lu\n", data[i]);
+      }
+    }
+
+    for (uint64_t i = 0; i < max_size; i ++) {
+      if (!found_count[i]) {
+        printf("Elt doesn't exist serial check: key = %lu\n", data[i]);
+      }
+      if (!found_count_bulk[i]) {
+        printf("Elt doesn't exist bulk serial check: key = %lu\n", data[i]);
+      }
     }
     int count_found = 0;
     int count_found_bulk = 0;

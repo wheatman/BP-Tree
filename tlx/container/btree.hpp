@@ -2763,7 +2763,8 @@ public:
 
         Iterator it = ibegin;
         // save inner nodes and maxkey for next level.
-        key_type* leaf_max_keys[num_leaves];
+        key_type leaf_max_keys[num_leaves];
+        // key_type* leaf_max_keys[num_leaves];
 
         for (size_t i = 0; i < num_leaves; ++i)
         {
@@ -2778,7 +2779,7 @@ public:
 #endif
             key_type leaf_max;
             leaf->slotdata.bulk_load(it,ibegin, num_leaf_elts, &leaf_max);
-            leaf_max_keys[i] = &leaf_max;
+            leaf_max_keys[i] = leaf_max;
 
             if (tail_leaf_ != nullptr) {
                 tail_leaf_->next_leaf = leaf;
@@ -2834,7 +2835,7 @@ public:
             // copy last key from each leaf and set child
             for (unsigned short s = 0; s < n->slotuse; ++s)
             {
-                n->slotkey[s] = *leaf_max_keys[count_leaves];
+                n->slotkey[s] = leaf_max_keys[count_leaves];
                 n->childid[s] = leaf;
                 leaf = leaf->next_leaf;
                 count_leaves++;
@@ -2843,7 +2844,7 @@ public:
 
             // track max key of any descendant.
             nextlevel[i].first = n;
-            nextlevel[i].second = leaf_max_keys[count_leaves];
+            nextlevel[i].second = &leaf_max_keys[count_leaves];
 
             leaf = leaf->next_leaf;
             num_leaves -= n->slotuse + 1;
