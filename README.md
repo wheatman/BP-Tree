@@ -15,6 +15,32 @@ tlx is a collection of C++ helpers and extensions universally needed, but not fo
 [![Build status](https://ci.appveyor.com/api/projects/status/xxwj7usfjfs3h9id/branch/master?svg=true)](https://ci.appveyor.com/project/bingmann/tlx/branch/master)
 [![Coverage Status](https://coveralls.io/repos/github/tlx/tlx/badge.svg)](https://coveralls.io/github/tlx/tlx)
 
+## Content organization
+
+Branches:
+- `reader_writer_locks`: The baseline TLX B+-tree with added optimistic concurrency control. 
+- `with_leafds`: The B+-tree containing the BPA within leaf nodes with added optimistic concurrency control.
+
+Relevant code sections:
+- `btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
+- `tlx/container/`: B+-tree data structures. 
+
+### Running benchmarks
+
+Microbenchmarks: 
+```
+cd btree_tests
+make CILK=1 DEBUG=0 basic
+./basic [number of elements to insert] [number of queries]
+```
+
+YCSB:
+```
+cd btree_tests
+make CILK=1 DEBUG=0 ycsb
+./ycsb [index type] [ycsb workload type] [key distribution] [access pattern] [number of threads]
+```
+
 ## List of the most commonly used components:
 
 - `CountingPtr` – an intrusive reference counting pointer
