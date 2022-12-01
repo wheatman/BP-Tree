@@ -1,19 +1,4 @@
-# tlx - Collection of C++ Data Structures, Algorithms, and Miscellaneous Helpers
-
-tlx is a collection of C++ helpers and extensions universally needed, but not found in the STL.The most important design goals and conventions are:
-
-- high modularity with as little dependencies between modules as possible.
-- attempt to never break existing interfaces.
-- compile on all platforms with C++ – smartphones, supercomputers, windows, etc.
-- zero external dependencies: no additional libraries are required.
-- warning and bug-freeness on all compilers.
-- keep overhead down – small overall size such that is can be included without bloating applications.
-
---->> **[Doxygen Documentation](https://tlx.github.io/)** <<---
-
-[![Build Status](https://travis-ci.org/tlx/tlx.svg?branch=master)](https://travis-ci.org/tlx/tlx)
-[![Build status](https://ci.appveyor.com/api/projects/status/xxwj7usfjfs3h9id/branch/master?svg=true)](https://ci.appveyor.com/project/bingmann/tlx/branch/master)
-[![Coverage Status](https://coveralls.io/repos/github/tlx/tlx/badge.svg)](https://coveralls.io/github/tlx/tlx)
+# Concurrent B-Trees with Buffered Partition Arrays
 
 ## Content organization
 
@@ -51,6 +36,23 @@ cd btree_tests
 make CILK=1 DEBUG=0 ycsb
 ./ycsb [index type] [ycsb workload type] [key distribution] [access pattern] [number of threads]
 ```
+
+## tlx - Collection of C++ Data Structures, Algorithms, and Miscellaneous Helpers
+
+tlx is a collection of C++ helpers and extensions universally needed, but not found in the STL.The most important design goals and conventions are:
+
+- high modularity with as little dependencies between modules as possible.
+- attempt to never break existing interfaces.
+- compile on all platforms with C++ – smartphones, supercomputers, windows, etc.
+- zero external dependencies: no additional libraries are required.
+- warning and bug-freeness on all compilers.
+- keep overhead down – small overall size such that is can be included without bloating applications.
+
+--->> **[Doxygen Documentation](https://tlx.github.io/)** <<---
+
+[![Build Status](https://travis-ci.org/tlx/tlx.svg?branch=master)](https://travis-ci.org/tlx/tlx)
+[![Build status](https://ci.appveyor.com/api/projects/status/xxwj7usfjfs3h9id/branch/master?svg=true)](https://ci.appveyor.com/project/bingmann/tlx/branch/master)
+[![Coverage Status](https://coveralls.io/repos/github/tlx/tlx/badge.svg)](https://coveralls.io/github/tlx/tlx)
 
 ## List of the most commonly used components:
 
