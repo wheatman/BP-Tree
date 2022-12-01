@@ -56,8 +56,5 @@ basic: test.cpp
 ycsb: ycsb.cpp
 	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ ycsb.cpp
 
-ycsb_test_copy: ycsb_test_copy.cpp
-	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ ycsb_test_copy.cpp
-
 clean:
 	rm -f *.o opt profile basic code.profdata default.profraw

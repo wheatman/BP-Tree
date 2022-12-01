@@ -1900,10 +1900,10 @@ int main(int argc, char *argv[]) {
   outfile.close();
 
   // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
   if (!correct) {
     printf("got the wrong answer :(\n");
