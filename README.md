@@ -24,8 +24,19 @@ Branches:
 Relevant code sections:
 - `btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
 - `tlx/container/`: B+-tree data structures. 
+- `btree_tests/leafDS`: Submodule for the BPA implementation used in the BP-tree. 
+- `btree_tests/ParallelTools`: Submodule for locking mechanisms used in the B-tree and BP-tree.
 
 ### Running benchmarks
+
+Setup instructions:
+```
+git clone https://github.com/wheatman/concurrent-btrees.git
+// Install OpenCilk as instructed here: https://www.opencilk.org/doc/users-guide/install/
+git submodule init ./btree_tests/*
+git submodule update ./btree_tests/*
+export CXX=[path to compiler]
+```
 
 Microbenchmarks: 
 ```
