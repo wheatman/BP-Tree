@@ -1445,8 +1445,9 @@ test_iterator_merge_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, 
     T correct_key = *it_correct;
     T leafds_key = it_leafds.key();
     // auto leafds_key_deref = *it_leafds;
+
     if (correct_key != leafds_key) {
-      printf("wrong iterator value, expected %lu but got %lu on count = %lu, iter = %lu\n", correct_key, leafds_key, count, it_leafds);
+      printf("wrong iterator value, expected %lu but got %lu on count = %lu\n", correct_key, leafds_key, count);
       return false;
     }
     ++it_correct;
@@ -1902,8 +1903,8 @@ int main(int argc, char *argv[]) {
   // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
   if (!correct) {
     printf("got the wrong answer :(\n");
