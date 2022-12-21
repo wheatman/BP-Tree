@@ -506,6 +506,10 @@ public:
             : curr_leaf(l), leafds_iterator(l->slotdata.begin())
         { }
 
+        iterator(typename BTree::LeafNode* l, typename leafDS_type::iterator leafds_iterator)
+            : curr_leaf(l), leafds_iterator(leafds_iterator)
+        { }
+
         iterator(typename BTree::LeafNode* l, bool end)
             : curr_leaf(l), leafds_iterator(l->slotdata.end())
         { }
@@ -2070,8 +2074,9 @@ public:
 
         LeafNode* leaf = static_cast<LeafNode*>(n);
 
-        unsigned short slot = find_lower(leaf, key);
-        return iterator(leaf, slot);
+        // unsigned short slot = find_lower(leaf, key);
+        // return iterator(leaf, slot);
+        return iterator(leaf, leaf->slotdata.lower_bound(key));
     }
 
     //! Searches the B+ tree and returns a constant iterator to the first pair
