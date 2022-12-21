@@ -10,6 +10,7 @@
 
 #include <tlx/container/btree_set.hpp>
 #include <tlx/container/btree_map.hpp>
+#include "timers.hpp"
 
 // #define CORRECTNESS 0
 #define TRIALS 5
@@ -302,6 +303,203 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
   printf("insert time = %lu\n", insert_times[trials / 2]);
   printf("with map time = %lu, with subtract time = %lu\n", with_map_times[trials / 2], with_subtract_times[trials / 2]);
 
+}
+
+
+template <class T, uint32_t internal_bytes>
+void test_concurrent_btreeset_scalability(uint64_t max_size, uint64_t NUM_QUERIES,
+                                          std::seed_seq &seed, int trials) {
+  std::mt19937_64 eng(seed);
+  std::vector<T> data = create_random_data<T>(max_size, std::numeric_limits<T>::max() - (trials + 1), seed);
+  
+  std::seed_seq query_seed{1};
+  std::seed_seq query_seed_2{2};
+  std::vector<uint64_t> range_query_start_idxs =
+        create_random_data<uint64_t>(NUM_QUERIES, data.size() - 1, query_seed);
+
+  uint64_t MAX_QUERY_SIZE = 100000;
+
+  printf("done generating the data\n");
+  uint64_t start_time, end_time;
+  uint64_t parallel_time = 0;
+#if ENABLE_TRACE_TIMER == 1
+  std::vector<uint64_t> concurrent_latencies(trials * max_size);
+  std::vector<uint64_t> concurrent_find_latencies(trials * max_size);
+  std::vector<uint64_t> concurrent_sorted_range_latencies(trials * max_size);
+  std::vector<uint64_t> concurrent_unsorted_range_latencies(trials * max_size);
+#endif
+  for (int j = 0; j < trials; j++) {
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+                    std::allocator<T>, true>
+        concurrent_map;
+    start_time = get_usecs();
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      uint64_t start_indv = timer::get_time();
+      concurrent_map.insert({data[i] + j, 2*(data[i] + j)});
+      uint64_t end_indv = timer::get_time();
+  #if ENABLE_TRACE_TIMER == 1
+      concurrent_latencies[j * max_size + i] = end_indv - start_indv;
+  #endif
+    }
+    end_time = get_usecs();
+    parallel_time += end_time - start_time;
+    printf("concurrent insert trial took  %lu\n", end_time - start_time);
+    
+    // TIME POINT FINDS
+    std::vector<bool> found_count(NUM_QUERIES);
+    start_time = get_usecs();
+    cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
+      uint64_t start_indv = timer::get_time();
+      found_count[i] = concurrent_map.exists(data[range_query_start_idxs[i]]);
+      uint64_t end_indv = timer::get_time();
+    #if ENABLE_TRACE_TIMER == 1
+      concurrent_find_latencies[j * max_size + i] = end_indv - start_indv;
+    #endif
+    }
+    end_time = get_usecs();
+    int count_found = 0;
+    for (auto e : found_count) {
+      count_found += e ? 1 : 0;
+    }
+    printf("\tDone finding %lu elts in %lu, count = %d \n",NUM_QUERIES, end_time - start_time, count_found);
+
+    // TIME RANGE QUERIES
+    std::vector<uint64_t> range_query_lengths =
+      create_random_data<uint64_t>(NUM_QUERIES, MAX_QUERY_SIZE - 1, query_seed_2);
+
+    std::vector<T> concurrent_range_query_length_maxs(NUM_QUERIES);
+    std::vector<uint64_t> concurrent_range_query_length_counts(NUM_QUERIES);
+    std::vector<T> concurrent_range_query_length_key_sums(NUM_QUERIES);
+    std::vector<T> concurrent_range_query_length_val_sums(NUM_QUERIES);
+
+    // SORTED RANGE QUERY
+    cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+      T start;
+      start = data[range_query_start_idxs[i]];
+
+      uint64_t num_in_range = 0;
+      T max_key_in_range = start;
+      concurrent_map.map_range_length(start, range_query_lengths[i], [&num_in_range, &max_key_in_range]([[maybe_unused]] auto key, auto val) {
+                num_in_range++;
+                if (key > max_key_in_range) {
+                  max_key_in_range = key;
+                }
+              });
+      concurrent_range_query_length_counts[i] = num_in_range;
+      concurrent_range_query_length_maxs[i] = max_key_in_range;
+    }
+
+    start_time = get_usecs();
+    cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+      T start;
+      start = data[range_query_start_idxs[i]];
+      T sum_key_range = 0;
+      T sum_val_range = 0;
+      uint64_t start_indv = timer::get_time();
+      concurrent_map.map_range_length(start, range_query_lengths[i], [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                sum_key_range += key;
+                sum_val_range += val;
+              });
+      concurrent_range_query_length_key_sums[i] = sum_key_range;
+      concurrent_range_query_length_val_sums[i] = sum_val_range;
+      uint64_t end_indv = timer::get_time();
+    #if ENABLE_TRACE_TIMER == 1
+      concurrent_sorted_range_latencies[j * max_size + i] = end_indv - start_indv;
+    #endif
+    }
+    end_time = get_usecs();
+    printf("\t did sorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+    T sum_all_keys = 0;
+    for (auto e: concurrent_range_query_length_key_sums) {
+      sum_all_keys += e;
+    }
+    T sum_all_vals = 0;
+    for (auto e: concurrent_range_query_length_val_sums) {
+      sum_all_vals += e;
+    }
+    if (sum_all_keys * 2 != sum_all_vals) {
+      printf("\t\t wrong, sum keys * 2 not equal to sum vals\n");
+    }
+    printf("\t\t sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
+
+    std::vector<T> concurrent_range_query_key_sums(NUM_QUERIES);
+    std::vector<T> concurrent_range_query_val_sums(NUM_QUERIES);
+
+    start_time = get_usecs();
+    cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+      T start, end;
+      start = data[range_query_start_idxs[i]];
+      end = concurrent_range_query_length_maxs[i];
+      if (range_query_lengths[i] != 0) {
+        end++;
+      }
+
+      T sum_key_range = 0;
+      T sum_val_range = 0;
+      uint64_t start_indv = timer::get_time();
+      concurrent_map.map_range(start, end, [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                sum_key_range += key;
+                sum_val_range += val;
+              });
+      concurrent_range_query_key_sums[i] = sum_key_range;
+      concurrent_range_query_val_sums[i] = sum_val_range;
+      uint64_t end_indv = timer::get_time();
+    #if ENABLE_TRACE_TIMER == 1
+      concurrent_unsorted_range_latencies[j * max_size + i] = end_indv - start_indv;
+    #endif
+    }
+    end_time = get_usecs();
+    printf("\t did unsorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+    sum_all_keys = 0;
+    for (auto e: concurrent_range_query_key_sums) {
+      sum_all_keys += e;
+    }
+    sum_all_vals = 0;
+    for (auto e: concurrent_range_query_val_sums) {
+      sum_all_vals += e;
+    }
+    if (sum_all_keys * 2 != sum_all_vals) {
+      printf("\t\t wrong, sum keys * 2 not equal to sum vals\n");
+    }
+    printf("\t\t sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
+
+  }
+
+  // printf("Parallel insert time / trials %lu\n", parallel_time / trials);
+#if ENABLE_TRACE_TIMER == 1
+  std::sort(concurrent_latencies.begin(), concurrent_latencies.end());
+  std::sort(concurrent_find_latencies.begin(), concurrent_find_latencies.end());
+  std::sort(concurrent_sorted_range_latencies.begin(), concurrent_sorted_range_latencies.end());
+  std::sort(concurrent_unsorted_range_latencies.begin(), concurrent_unsorted_range_latencies.end());
+  printf("concurrent inserts: 50%% = %lu, 90%% = %lu, 99%% = %lu, 99.9%% = %lu, max = "
+         "%lu\n",
+         concurrent_latencies[concurrent_latencies.size() / 2],
+         concurrent_latencies[concurrent_latencies.size() * 9 / 10],
+         concurrent_latencies[concurrent_latencies.size() * 99 / 100],
+         concurrent_latencies[concurrent_latencies.size() * 999 / 1000],
+         concurrent_latencies[concurrent_latencies.size() - 1]);
+  printf("concurrent finds: 50%% = %lu, 90%% = %lu, 99%% = %lu, 99.9%% = %lu, max = "
+         "%lu\n",
+         concurrent_find_latencies[concurrent_find_latencies.size() / 2],
+         concurrent_find_latencies[concurrent_find_latencies.size() * 9 / 10],
+         concurrent_find_latencies[concurrent_find_latencies.size() * 99 / 100],
+         concurrent_find_latencies[concurrent_find_latencies.size() * 999 / 1000],
+         concurrent_find_latencies[concurrent_find_latencies.size() - 1]);
+  printf("concurrent sorted range: 50%% = %lu, 90%% = %lu, 99%% = %lu, 99.9%% = %lu, max = "
+         "%lu\n",
+         concurrent_sorted_range_latencies[concurrent_sorted_range_latencies.size() / 2],
+         concurrent_sorted_range_latencies[concurrent_sorted_range_latencies.size() * 9 / 10],
+         concurrent_sorted_range_latencies[concurrent_sorted_range_latencies.size() * 99 / 100],
+         concurrent_sorted_range_latencies[concurrent_sorted_range_latencies.size() * 999 / 1000],
+         concurrent_sorted_range_latencies[concurrent_sorted_range_latencies.size() - 1]);
+  printf("concurrent unsorted range: 50%% = %lu, 90%% = %lu, 99%% = %lu, 99.9%% = %lu, max = "
+         "%lu\n",
+         concurrent_unsorted_range_latencies[concurrent_unsorted_range_latencies.size() / 2],
+         concurrent_unsorted_range_latencies[concurrent_unsorted_range_latencies.size() * 9 / 10],
+         concurrent_unsorted_range_latencies[concurrent_unsorted_range_latencies.size() * 99 / 100],
+         concurrent_unsorted_range_latencies[concurrent_unsorted_range_latencies.size() * 999 / 1000],
+         concurrent_unsorted_range_latencies[concurrent_unsorted_range_latencies.size() - 1]);
+#endif
 }
 
 template <class T>
@@ -1903,13 +2101,14 @@ int main(int argc, char *argv[]) {
   // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
-  bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
+  test_concurrent_btreeset_scalability<unsigned long, 1024>(n, num_queries, seed, trials);
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
 
-  if (!correct) {
-    printf("got the wrong answer :(\n");
-    return -1;
-  }
+  // if (!correct) {
+  //   printf("got the wrong answer :(\n");
+  //   return -1;
+  // }
 
   return 0;
 }
