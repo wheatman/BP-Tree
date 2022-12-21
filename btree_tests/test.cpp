@@ -46,9 +46,9 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
 
-  uint64_t start, end, serial_time;
+  uint64_t start, end, serial_insert_time, parallel_time;
 
-// #if DEBUG
+#if DEBUG
   tlx::btree_set<T> serial_set;
   start = get_usecs();
   for (uint32_t i = 0; i < max_size; i++) {
@@ -57,7 +57,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   end = get_usecs();
   serial_time = end - start;
   printf("inserted all the data serially in %lu\n", end - start);
-// #endif
+#endif
+
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                  std::allocator<T>, false>
       serial_test_set;
@@ -66,25 +67,46 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     serial_test_set.insert(data[i]);
   }
   end = get_usecs();
-  serial_time = end - start;
-  printf("\tinserted %lu elts serially in %lu\n", max_size, serial_time);
+  serial_insert_time = end - start;
+  printf("\tinserted %lu elts serially in %lu\n", max_size, serial_insert_time);
 
-  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
-                 std::allocator<T>, true> concurrent_set;
-  start = get_usecs();
-  cilk_for(uint32_t i = 0; i < max_size; i++) {
-    concurrent_set.insert(data[i]);
+  std::vector<uint64_t> insert_times;
+  std::vector<uint64_t> sum_times;
+
+  uint32_t num_trials = 5;
+  for(uint32_t trial = 0; trial < num_trials; trial++) {
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                   std::allocator<T>, true> concurrent_set;
+    start = get_usecs();
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_set.insert(data[i]);
+    }
+    end = get_usecs();
+    parallel_time = end - start;
+    
+    printf("\tinserted %lu elts concurrently in %lu\n", max_size, parallel_time);
+    if(trial > 0) { insert_times.push_back(parallel_time); }
+
+    start = get_usecs();
+    auto concurrent_sum = concurrent_set.psum();
+    end = get_usecs();
+    parallel_time = end - start;
+    printf("concurrent sum = %lu\n", concurrent_sum);
+    if (trial > 0) { sum_times.push_back(parallel_time); }
   }
-  end = get_usecs();
-  uint64_t parallel_time = end - start;
-  printf("\tinserted %lu elts concurrently in %lu\n", max_size, parallel_time);
+  std::sort(insert_times.begin(), insert_times.end());
+  uint64_t concurrent_insert_time = insert_times[num_trials / 2];
+  printf("serial insert time = %lu, concurrent insert time = %lu, speedup = %f\n", serial_insert_time, concurrent_insert_time, (double)serial_insert_time / (double)concurrent_insert_time);
 
-// #if DEBUG
+  return {true, serial_insert_time, concurrent_insert_time, 0, 0};
+/*
+#if DEBUG
   if (serial_set.size() != concurrent_set.size()) {
     printf("the sizes don't match, got %lu, expetected %lu\n",
            concurrent_set.size(), serial_set.size());
     return {false, 0, 0, 0, 0};
   }
+
   auto it_serial = serial_set.begin();
   auto it_concurrent = concurrent_set.begin();
   bool wrong = false;
@@ -116,7 +138,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
     concurrent_set.erase(data[indxs_to_remove[i]]);
   }
   // return {true, serial_time, parallel_time, serial_remove_time, parallel_remove_time};
-// #endif
+#endif
 
   uint64_t parallel_remove_end = get_usecs();
   uint64_t parallel_remove_time = parallel_remove_end - parallel_remove_start;
@@ -151,6 +173,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
   return {true, serial_time, parallel_time, serial_remove_time,
           parallel_remove_time};
+*/
 }
 
 template <class T>
@@ -2119,13 +2142,17 @@ int main(int argc, char *argv[]) {
   outfile.open("range_queries.csv", std::ios_base::app); 
   outfile << "tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
-
+  auto result = test_concurrent_btreeset<uint64_t>(n, seed);
+  auto serial_time = std::get<1>(result);
+  auto parallel_time = std::get<2>(result);
+  printf("speedup = %f\n", (double)serial_time/(double)parallel_time);
   // array_range_query_baseline<unsigned long>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_bulk_load_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
-  bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+    // this one ***
+  // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv, trials);
