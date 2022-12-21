@@ -2206,33 +2206,6 @@ test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, s
       uint64_t start_time, end_time, end_merge_time;
       start_time = get_usecs();
 
-      // auto it_btree_1 = concurrent_map1.lower_bound(start_key);
-      // auto it_btree_2 = concurrent_map2.lower_bound(start_key);
-      // while (it_btree_1 != concurrent_map1.end() && it_btree_2 != concurrent_map2.end() && (*it_btree_1).first < end_key && (*it_btree_2).first < end_key) {
-      //   // printf("\t\t lower start_key_1 = %lu, lower start_key_2 = %lu \n", (*it_btree_1).first, (*it_btree_2).first);
-      //   if ((*it_btree_1).first < (*it_btree_2).first) {
-      //     merged_chunk.push_back(*it_btree_1);
-      //     it_btree_1++;
-      //   }
-      //   else if ((*it_btree_2).first < (*it_btree_1).first) {
-      //     merged_chunk.push_back(*it_btree_2);
-      //     it_btree_2++;
-      //   }
-      //   else {
-      //     merged_chunk.push_back(*it_btree_1);
-      //     it_btree_1++;
-      //     it_btree_2++;
-      //   }
-      // }
-      // while (it_btree_1 != concurrent_map1.end() && (*it_btree_1).first < end_key) {
-      //   merged_chunk.push_back(*it_btree_1);
-      //   it_btree_1++;
-      // }
-      // while (it_btree_2 != concurrent_map2.end() && (*it_btree_2).first < end_key) {
-      //   merged_chunk.push_back(*it_btree_2);
-      //   it_btree_2++;
-      // }
-
       std::merge(concurrent_map1.lower_bound(start_key), concurrent_map1.lower_bound(end_key), concurrent_map2.lower_bound(start_key), concurrent_map2.lower_bound(end_key), std::back_inserter(merged_chunk));
       merged_vecs[chunk_idx] = merged_chunk;
       merged_vecs_prefix_sums[chunk_idx + 1] = merged_chunk.size();
