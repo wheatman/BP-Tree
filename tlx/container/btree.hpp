@@ -503,16 +503,28 @@ public:
 
         //! Initializing-Constructor of a mutable iterator
         iterator(typename BTree::LeafNode* l)
-            : curr_leaf(l), leafds_iterator(l->slotdata.begin())
-        { }
+            : curr_leaf(l)
+        { 
+            l->mutex_.lock();
+            leafds_iterator = l->slotdata.begin();
+            l->mutex_.unlock();
+        }
 
-        iterator(typename BTree::LeafNode* l, typename leafDS_type::iterator leafds_iterator)
-            : curr_leaf(l), leafds_iterator(leafds_iterator)
-        { }
+        iterator(typename BTree::LeafNode* l, typename leafDS_type::iterator leaf_iter)
+            : curr_leaf(l)
+        { 
+            l->mutex_.lock();
+            leafds_iterator = leaf_iter;
+            l->mutex_.unlock();
+        }
 
         iterator(typename BTree::LeafNode* l, bool end)
-            : curr_leaf(l), leafds_iterator(l->slotdata.end())
-        { }
+            : curr_leaf(l)
+        { 
+            l->mutex_.lock();
+            leafds_iterator = l->slotdata.end();
+            l->mutex_.unlock();
+        }
 
         //! Copy-constructor from a reverse iterator
         // iterator(const reverse_iterator& it) // NOLINT
