@@ -2188,29 +2188,57 @@ test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, s
   typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
           std::allocator<T>, true> btree_type;
 
-  cilk_for(int trial = 0; trial <= num_trials; trial++) {
+  for (int trial = 0; trial <= num_trials; trial++) {
     // tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
     //         std::allocator<T>, true> merged_tree;
     
     std::vector<std::vector<std::tuple<T, T>>> merged_vecs(num_chunks);
     std::vector<uint64_t> merged_vecs_prefix_sums(num_chunks + 1);
     merged_vecs_prefix_sums[0] = 0;
-    printf("\tRight before chunk merge\n");
+    // printf("\tRight before chunk merge\n");
     start_time = get_usecs();
 
     cilk_for (uint64_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
       uint64_t start_key = 1 + chunk_idx * chunk_size;
       uint64_t end_key = (chunk_idx == num_chunks - 1) ? std::numeric_limits<T>::max() : 1 + (chunk_idx + 1) * chunk_size;
-      // std::vector<std::tuple<T, T>> merged_chunk;
+      std::vector<std::tuple<T, T>> merged_chunk;
 
       uint64_t start_time, end_time, end_merge_time;
       start_time = get_usecs();
 
-      std::merge(concurrent_map1.lower_bound(start_key), concurrent_map1.lower_bound(end_key), concurrent_map2.lower_bound(start_key), concurrent_map2.lower_bound(end_key), std::back_inserter(merged_vecs[chunk_idx]));
-      // merged_vecs[chunk_idx] = merged_chunk;
+      auto it_btree_1 = concurrent_map1.lower_bound(start_key);
+      auto it_btree_2 = concurrent_map2.lower_bound(start_key);
+      while (it_btree_1 != concurrent_map1.end() && it_btree_2 != concurrent_map2.end() && (*it_btree_1).first < end_key && (*it_btree_2).first < end_key) {
+        // printf("\t\t lower start_key_1 = %lu, lower start_key_2 = %lu \n", (*it_btree_1).first, (*it_btree_2).first);
+        if ((*it_btree_1).first < (*it_btree_2).first) {
+          merged_chunk.push_back(*it_btree_1);
+          it_btree_1++;
+        }
+        else if ((*it_btree_2).first < (*it_btree_1).first) {
+          merged_chunk.push_back(*it_btree_2);
+          it_btree_2++;
+        }
+        else {
+          merged_chunk.push_back(*it_btree_1);
+          it_btree_1++;
+          it_btree_2++;
+        }
+      }
+      while (it_btree_1 != concurrent_map1.end() && (*it_btree_1).first < end_key) {
+        merged_chunk.push_back(*it_btree_1);
+        it_btree_1++;
+      }
+      while (it_btree_2 != concurrent_map2.end() && (*it_btree_2).first < end_key) {
+        merged_chunk.push_back(*it_btree_2);
+        it_btree_2++;
+      }
+
+      // std::merge(concurrent_map1.lower_bound(start_key), concurrent_map1.lower_bound(end_key), concurrent_map2.lower_bound(start_key), concurrent_map2.lower_bound(end_key), std::back_inserter(merged_vecs[chunk_idx]));
+      
+      merged_vecs[chunk_idx] = merged_chunk;
       merged_vecs_prefix_sums[chunk_idx + 1] = merged_vecs[chunk_idx].size();
     }
-    printf("\tRight after chunk merge\n");
+    // printf("\tRight after chunk merge\n");
 
     end_time = get_usecs();
     printf("\tDone merging chunks for %lu elts via sorted range end in %lu\n", max_size, end_time - start_time);
