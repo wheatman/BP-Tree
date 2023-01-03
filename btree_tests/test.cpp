@@ -1841,7 +1841,7 @@ bool
 test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::seed_seq &seed, bool write_csv, int num_trials) {
   uint64_t start_time, end_time;
 
-  uint64_t num_chunks = 48 * num_chunk_multiplier;
+  uint64_t num_chunks = 1 * num_chunk_multiplier;
   uint64_t chunk_size = std::numeric_limits<T>::max() / num_chunks;
 
   printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu\n",internal_bytes, SLOTS);
@@ -1878,9 +1878,13 @@ test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, s
   std::vector<T> data2 =
           create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed2);
 
+  start_time = get_usecs();
   cilk_for(uint32_t i = 0; i < max_size; i++) {
       concurrent_map2.insert({data2[i], 2*data2[i]});
   }
+  end_time = get_usecs();
+
+  printf("\tDone inserting second %lu elts in %lu\n",max_size, end_time - start_time);
   
 #if CORRECTNESS
   for (uint32_t i = 0; i < max_size; i++) {

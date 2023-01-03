@@ -513,17 +513,15 @@ public:
         iterator(typename BTree::LeafNode* l, typename leafDS_type::iterator leaf_iter)
             : curr_leaf(l)
         { 
-            l->mutex_.lock();
             leafds_iterator = leaf_iter;
-            l->mutex_.unlock();
         }
 
         iterator(typename BTree::LeafNode* l, bool end)
             : curr_leaf(l)
         { 
-            l->mutex_.lock();
+            // l->mutex_.lock();
             leafds_iterator = l->slotdata.end();
-            l->mutex_.unlock();
+            // l->mutex_.unlock();
         }
 
         //! Copy-constructor from a reverse iterator
@@ -552,7 +550,9 @@ public:
             ++leafds_iterator;
             if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf != nullptr) {
                 curr_leaf = curr_leaf->next_leaf;
+                curr_leaf->mutex_.lock();
                 leafds_iterator = curr_leaf->slotdata.begin();
+                curr_leaf->mutex_.unlock();
             }
             else if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf == nullptr) {
                 // this is end()
@@ -569,7 +569,9 @@ public:
             ++leafds_iterator;
             if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf != nullptr) {
                 curr_leaf = curr_leaf->next_leaf;
+                curr_leaf->mutex_.lock();
                 leafds_iterator = curr_leaf->slotdata.begin();
+                curr_leaf->mutex_.unlock();
             }
             else if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf == nullptr) {
                 // this is end()
@@ -2088,7 +2090,10 @@ public:
 
         // unsigned short slot = find_lower(leaf, key);
         // return iterator(leaf, slot);
-        return iterator(leaf, leaf->slotdata.lower_bound(key));
+        leaf->mutex_.lock();
+        auto leaf_iter = leaf->slotdata.lower_bound(key);
+        leaf->mutex_.unlock();
+        return iterator(leaf, leaf_iter);
     }
 
     //! Searches the B+ tree and returns a constant iterator to the first pair
