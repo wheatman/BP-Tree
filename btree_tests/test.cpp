@@ -1841,7 +1841,7 @@ bool
 test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::seed_seq &seed, bool write_csv, int num_trials) {
   uint64_t start_time, end_time;
 
-  uint64_t num_chunks = 1 * num_chunk_multiplier;
+  uint64_t num_chunks = 48 * num_chunk_multiplier;
   uint64_t chunk_size = std::numeric_limits<T>::max() / num_chunks;
 
   printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu\n",internal_bytes, SLOTS);
