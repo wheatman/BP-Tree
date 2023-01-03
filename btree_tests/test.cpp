@@ -20,14 +20,6 @@
 #include "tlx/container/btree_map.hpp"
 #include "timers.hpp"
 
-// #define CORRECTNESS 0
-
-static long get_usecs() {
-  struct timeval st;
-  gettimeofday(&st, NULL);
-  return st.tv_sec * 1000000 + st.tv_usec;
-}
-
 template <class T>
 std::vector<T> create_random_data(size_t n, size_t max_val,
                                   std::seed_seq &seed) {
@@ -76,13 +68,29 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
   uint32_t num_trials = 5;
   for(uint32_t trial = 0; trial < num_trials; trial++) {
+#if ENABLE_TRACE_TIMER
+    ParallelTools::Reducer_sum<uint64_t> total_insert;
+    ParallelTools::Reducer_sum<uint64_t> total_lock;
+#endif
+
     tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                    std::allocator<T>, true> concurrent_set;
     start = get_usecs();
+
     cilk_for(uint32_t i = 0; i < max_size; i++) {
-      concurrent_set.insert(data[i]);
+      timer insert_timer("insert_timer");
+      insert_timer.start();
+      auto result = concurrent_set.insert(data[i]);
+      insert_timer.stop();
+#if ENABLE_TRACE_TIMER
+      total_insert.add(insert_timer.get_elapsed_time());
+      total_lock.add(result);
+#endif      
     }
     end = get_usecs();
+#if ENABLE_TRACE_TIMER
+    printf("total concurrent insert time = %lu, locking time = %lu, percent time = %f\n", total_insert.get(), total_lock.get(), ((double)total_lock.get() /(double) total_insert.get())*100);
+#endif
     parallel_time = end - start;
     
     printf("\tinserted %lu elts concurrently in %lu\n", max_size, parallel_time);
