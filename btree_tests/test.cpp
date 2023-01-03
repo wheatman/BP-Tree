@@ -79,7 +79,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   serial_time = end - start;
   printf("inserted all the data serially in %lu\n", end - start);
 #endif
-
+#if RUN_SERIAL_BTREE
   tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                  std::allocator<T>, false>
       serial_test_set;
@@ -90,13 +90,14 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   end = get_usecs();
   serial_insert_time = end - start;
   printf("\tinserted %lu elts serially in %lu\n", max_size, serial_insert_time);
+#endif
 
   std::vector<uint64_t> insert_times;
   std::vector<uint64_t> sum_times;
 
   uint32_t num_trials = 5;
   for(uint32_t trial = 0; trial < num_trials; trial++) {
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     ParallelTools::Reducer_sum<uint64_t> total_insert;
     ParallelTools::Reducer_sum<uint64_t> total_lock;
 #endif

@@ -455,7 +455,7 @@ public:
 
     //! Attempt to insert a key into the B+ tree. The insert will fail if it is
     //! already present.
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     std::tuple<iterator, bool, uint64_t> insert(const key_type& x) {
 #else
     std::pair<iterator, bool> insert(const key_type& x) {
