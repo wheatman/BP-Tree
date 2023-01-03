@@ -1,6 +1,6 @@
 #pragma once
 
-// #include "helpers.h"
+#include "helpers.h"
 #include <cstdint>
 #include <iostream> // cout
 #include <string>
@@ -26,18 +26,20 @@ public:
 #if CYCLE_TIMER == 1
   static inline uint64_t get_time() { return __rdtsc(); }
 #else
-  static long get_usecs() {
-    struct timeval st;
-    gettimeofday(&st, NULL);
-    return st.tv_sec * 1000000 + st.tv_usec;
-  }
   static inline uint64_t get_time() { return get_usecs(); }
 #endif
+
 
 #if ENABLE_TRACE_TIMER == 1
   timer(std::string n) : name(std::move(n)) {}
 #else
   template <typename T> timer([[maybe_unused]] T n) {}
+#endif
+
+#if ENABLE_TRACE_TIMER == 1
+  inline uint64_t get_elapsed_time() {
+    return elapsed_time;
+  }
 #endif
 
   inline void start() {
@@ -72,7 +74,7 @@ public:
 
   ~timer() {
 #if ENABLE_TRACE_TIMER == 1
-    report();
+    // report();
 #endif
   }
 };
