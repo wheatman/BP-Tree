@@ -2156,13 +2156,13 @@ public:
 
     //! Attempt to insert a key/data pair into the B+ tree. If the tree does not
     //! allow duplicate keys, then the insert may fail if it is already present.
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     std::tuple<iterator, bool, uint64_t> insert(const value_type& x) {
 #else
     std::pair<iterator, bool> insert(const value_type& x) {
 #endif
 
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
         timer lock_timer("lock_timer");
         auto result = insert_start(key_of_value::get(x), x, lock_timer);
         return {result.first, result.second, lock_timer.get_elapsed_time()};
@@ -2214,14 +2214,16 @@ private:
     template <bool optimism = true>
     std::pair<iterator, bool>
 
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     insert_start(const key_type& key, const value_type& value, timer& lock_timer, int cpu_id = -1) {
 #else
     insert_start(const key_type& key, const value_type& value, int cpu_id = -1) {
 #endif
 
         if constexpr (concurrent) {
+#if TIME_LOCKING
             lock_timer.start();
+#endif
             if constexpr (optimism) {
                 if (cpu_id == -1) {
                     cpu_id = sched_getcpu();
@@ -2234,7 +2236,9 @@ private:
                 mutex.write_lock();
                 // printf("locked the main lock in exclusive mode\n");
             }
+#if TIME_LOCKING
             lock_timer.stop();
+#endif
         }
 
         node* newchild = nullptr;
@@ -2242,25 +2246,29 @@ private:
 
         if (root_ == nullptr) {
             if constexpr (concurrent) {
+#if TIME_LOCKING
                 lock_timer.start();
+#endif
                 if constexpr (optimism) {
                     // printf("unlocking the main lock in shared mode\n");
                     mutex.read_unlock(cpu_id);
+#if TIME_LOCKING
                     lock_timer.stop();
-#if ENABLE_TRACE_TIMER
                     return insert_start<false>(key, value, lock_timer, cpu_id);
 #else
                     return insert_start<false>(key, value, cpu_id);
 #endif
                 } else {
+#if TIME_LOCKING
                   lock_timer.stop();
+#endif
                 }
             }
           root_ = head_leaf_ = tail_leaf_ = allocate_leaf();
         }
         auto lock_p = &mutex;
 
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
         std::tuple<iterator, bool, bool> r =
             insert_descend<optimism>(root_, key, value, &newkey, &newchild, &lock_p, cpu_id, lock_timer);
 #else
@@ -2268,22 +2276,28 @@ private:
             insert_descend<optimism>(root_, key, value, &newkey, &newchild, &lock_p, cpu_id);
 #endif
         if constexpr (concurrent) {
+#if TIME_LOCKING
             lock_timer.start();
+#endif
             if constexpr (optimism) {
                 if (lock_p) {
                     lock_p->read_unlock(cpu_id);
                 }
+#if TIME_LOCKING
+                lock_timer.stop();
+#endif
                 if (std::get<2>(r)) {
                     // printf("unlocking the main lock in shared mode\n");
-                    lock_timer.stop();
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
                     return insert_start<false>(key, value, lock_timer, cpu_id);
 #else
                     return insert_start<false>(key, value, cpu_id);
 #endif
                 }
             } else {
+#if TIME_LOCKING
               lock_timer.stop();
+#endif
             }
         }
 
@@ -2315,11 +2329,15 @@ private:
             TLX_BTREE_ASSERT(exists(key));
         }
         if constexpr (concurrent && !optimism) {
+#if TIME_LOCKING
             lock_timer.start();
+#endif
             if (lock_p) {
                 lock_p->write_unlock();
             }
+#if TIME_LOCKING
             lock_timer.stop();
+#endif
         }
 
         return {std::get<0>(r), std::get<1>(r)};
@@ -2333,7 +2351,7 @@ private:
      * inserted into the parent. Unroll / this splitting up to the root.
     */
     template<bool optimism>
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     std::tuple<iterator, bool, bool> insert_descend(
         node* n, const key_type& key, const value_type& value,
         key_type* splitkey, node** splitnode, ReaderWriterLock ** parent_lock, int cpu_id, timer& lock_timer) {
@@ -2347,7 +2365,9 @@ private:
             InnerNode* inner = static_cast<InnerNode*>(n);
             InnerNode* original_inner = inner;
             if constexpr (concurrent) {
+#if TIME_LOCKING
                 lock_timer.start();
+#endif
                 if constexpr (optimism) {
                     // printf("trying to lock a inner node lock %p in shared mode\n", inner);
                     inner->mutex_.read_lock(cpu_id);
@@ -2363,7 +2383,9 @@ private:
                     // }
                     // printf("locked a inner node lock %p in exclusive mode\n", inner);
                 }
+#if TIME_LOCKING
                 lock_timer.stop();
+#endif
             }
             key_type newkey = key_type();
             node* newchild = nullptr;
@@ -2374,7 +2396,7 @@ private:
                 "BTree::insert_descend into " << inner->childid[slot]);
 
             auto lock_p = &inner->mutex_;
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
             std::tuple<iterator, bool, bool> r =
                 insert_descend<optimism>(inner->childid[slot],
                                key, value, &newkey, &newchild, &lock_p, cpu_id, lock_timer);
@@ -2384,11 +2406,14 @@ private:
                                key, value, &newkey, &newchild, &lock_p, cpu_id);
 #endif
             if constexpr (concurrent && optimism) {
+#if TIME_LOCKING
               lock_timer.start();
+#endif
               if (lock_p) {
                 if (inner->level == 1 && std::get<2>(r) && !inner->is_full()) {
                   if (lock_p->try_upgrade_release_on_fail(cpu_id)) {
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
+                    lock_timer.stop();
                     r = insert_descend<false>(inner->childid[slot], key, value,
                                               &newkey, &newchild, &lock_p,
                                               cpu_id, lock_timer);
@@ -2406,7 +2431,9 @@ private:
                   lock_p = nullptr;
                 }
               }
+#if TIME_LOCKING
               lock_timer.stop();
+#endif
             }
 
             if (newchild)
@@ -2457,9 +2484,13 @@ private:
                         split->childid[0] = newchild;
                         *splitkey = newkey;
                         if (concurrent) {
+#if TIME_LOCKING
                             lock_timer.start();
+#endif
                             inner->mutex_.write_unlock();
+#if TIME_LOCKING
                             lock_timer.stop();
+#endif
                         }
                         return r;
                     }
@@ -2491,13 +2522,17 @@ private:
                 inner->slotuse++;
             }
             if constexpr (concurrent) {
+#if TIME_LOCKING
                 lock_timer.start();
+#endif
                 if  (lock_p)  {
                     // when we are optimistic we can unlock on the way down
                     // printf("unlocking exclusive node lock from %p\n", original_inner);
                     original_inner->mutex_.write_unlock();
                 }
+#if TIME_LOCKING
                 lock_timer.stop();
+#endif
             }
             return r;
         }
@@ -2506,7 +2541,9 @@ private:
             LeafNode* leaf = static_cast<LeafNode*>(n);
             LeafNode* original_leaf = leaf;
             if constexpr (concurrent) {
+#if TIME_LOCKING
                 lock_timer.start();
+#endif
                 // printf("trying to lock leaf lock from %p\n", leaf);
                 leaf->mutex_.lock();
                 if constexpr (optimism) {
@@ -2515,8 +2552,9 @@ private:
                         *parent_lock = nullptr;
                     }
                 }
+#if TIME_LOCKING
                 lock_timer.stop();
-                // printf("locked leaf lock from %p\n", leaf);
+#endif
             }
             unsigned short slot = find_lower(leaf, key);
 
@@ -2524,9 +2562,13 @@ private:
                 slot < leaf->slotuse && key_equal(key, leaf->key(slot))) {
                 if constexpr (concurrent) {
                     // printf("unlcoked leaf lock %p\n", leaf);
+#if TIME_LOCKING
                     lock_timer.start();
+#endif
                     leaf->mutex_.unlock();
+#if TIME_LOCKING
                     lock_timer.stop();
+#endif
                 }
                 return std::tuple<iterator, bool, bool>(iterator(leaf, slot), false, false);
             }
@@ -2534,13 +2576,20 @@ private:
             if (leaf->is_full())
             {
                 if constexpr (concurrent) {
+#if TIME_LOCKING
                     lock_timer.start();
+#endif
                     if constexpr (optimism) {
                         // printf("unlcoked leaf lock %p\n", leaf);
                         leaf->mutex_.unlock();
+#if TIME_LOCKING
+                        lock_timer.stop();
+#endif
                         return {{},{},true};
                     }
+#if TIME_LOCKING
                     lock_timer.stop();
+#endif
                 }
                 split_leaf_node(leaf, splitkey, splitnode);
 
@@ -2569,10 +2618,14 @@ private:
                 *splitkey = key;
             }
             if constexpr (concurrent) {
+#if TIME_LOCKING
                 lock_timer.start();
+#endif
                 // printf("unlocked leaf lock %p\n", leaf);
                 original_leaf->mutex_.unlock();
+#if TIME_LOCKING
                 lock_timer.stop();
+#endif
             }
             return std::tuple<iterator, bool, bool>(iterator(leaf, slot), true, false);
         }
