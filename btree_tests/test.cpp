@@ -16,9 +16,9 @@
 #define cilk_for for
 #endif
 
+#include "timers.hpp"
 #include <tlx/container/btree_set.hpp>
 #include "tlx/container/btree_map.hpp"
-#include "timers.hpp"
 
 template <class T>
 std::vector<T> create_random_data(size_t n, size_t max_val,
@@ -112,7 +112,7 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
       insert_timer.stop();
 #if ENABLE_TRACE_TIMER
       total_insert.add(insert_timer.get_elapsed_time());
-      total_lock.add(result);
+      total_lock.add(std::get<2>(result));
 #endif      
     }
     end = get_usecs();
@@ -2904,7 +2904,7 @@ int main(int argc, char *argv[]) {
   outfile.open("range_queries.csv", std::ios_base::app); 
   outfile << "tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
-  // auto result = test_concurrent_btreeset<uint64_t>(n, seed);
+  auto result = test_concurrent_btreeset<uint64_t>(n, seed);
   // auto serial_time = std::get<1>(result);
   // auto parallel_time = std::get<2>(result);
   // printf("speedup = %f\n", (double)serial_time/(double)parallel_time);
@@ -2913,7 +2913,7 @@ int main(int argc, char *argv[]) {
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_bulk_load_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
-  bool correct = test_parallel_iter_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_parallel_iter_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
     // this one ***
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // test_concurrent_btreeset_scalability<unsigned long, 1024, 1024>(n, num_queries, seed, trials);
