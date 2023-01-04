@@ -33,6 +33,33 @@ std::vector<T> create_random_data(size_t n, size_t max_val,
   return v;
 }
 
+
+template <class T>
+std::vector<T> create_random_data_in_parallel(size_t n, size_t max_val,
+                                                   uint64_t seed_add = 0) {
+
+  std::vector<T> v(n);
+  uint64_t per_worker = (n / ParallelTools::getWorkers()) + 1;
+  ParallelTools::parallel_for(0, ParallelTools::getWorkers(), [&](uint64_t i) {
+    uint64_t start = i * per_worker;
+    uint64_t end = (i + 1) * per_worker;
+    if (end > n) {
+      end = n;
+    }
+    if ((int)i == ParallelTools::getWorkers() - 1) {
+      end = n;
+    }
+    std::random_device rd;
+    std::mt19937_64 eng(i + seed_add); // a source of random data
+
+    std::uniform_int_distribution<uint64_t> dist(0, max_val);
+    for (size_t j = start; j < end; j++) {
+      v[j] = dist(eng);
+    }
+  });
+  return v;
+}
+
 template <class T>
 std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
 test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
@@ -109,81 +136,116 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   printf("serial insert time = %lu, concurrent insert time = %lu, speedup = %f\n", serial_insert_time, concurrent_insert_time, (double)serial_insert_time / (double)concurrent_insert_time);
 
   return {true, serial_insert_time, concurrent_insert_time, 0, 0};
-/*
-#if DEBUG
-  if (serial_set.size() != concurrent_set.size()) {
-    printf("the sizes don't match, got %lu, expetected %lu\n",
-           concurrent_set.size(), serial_set.size());
-    return {false, 0, 0, 0, 0};
-  }
+}
 
-  auto it_serial = serial_set.begin();
-  auto it_concurrent = concurrent_set.begin();
-  bool wrong = false;
-  for (uint64_t i = 0; i < serial_set.size(); i++) {
-    if (*it_serial != *it_concurrent) {
-      printf("don't match in position %lu, got %lu, expected %lu\n", i,
-             *it_concurrent, *it_serial);
-      wrong = true;
+template <class T>
+void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
+  if (max_size > std::numeric_limits<T>::max()) {
+    max_size = std::numeric_limits<T>::max();
+  }
+  uint32_t seed_offset = 100;
+  // for debugging
+  std::vector<T> data =
+      create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max());
+
+  printf("finished creating data\n");
+
+  uint64_t start, end, concurrent_insert_time, serial_insert_time;
+
+  // add all sizes up until max_size
+  for(uint32_t num_to_add = 1; num_to_add <= max_size; num_to_add *= 10) {
+
+    // first start with serial version
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, false> s;
+
+    start = get_usecs();
+    for (uint32_t i = 0; i < max_size; i++) {
+      s.insert(data[i]);
     }
-    it_serial++;
-    it_concurrent++;
-  }
-  if (wrong) {
-    return {false, 0, 0, 0, 0};
-  }
+    end = get_usecs();
+    serial_insert_time = end - start;
+    printf("\nserially inserted %lu elts in %lu \n", max_size, end - start);
+    printf("\tadd %u other elts\n", num_to_add);
 
-  std::vector<uint64_t> indxs_to_remove =
-      create_random_data<uint64_t>(max_size / 2, data.size(), seed);
+    std::vector<T> data_to_add = create_random_data_in_parallel<T>(num_to_add, std::numeric_limits<T>::max(), seed_offset);
 
-  uint64_t serial_remove_start = get_usecs();
-  for (uint32_t i = 0; i < indxs_to_remove.size(); i++) {
-    serial_set.erase(data[indxs_to_remove[i]]);
-  }
-  uint64_t serial_remove_end = get_usecs();
-  uint64_t serial_remove_time = serial_remove_end - serial_remove_start;
-
-  uint64_t parallel_remove_start = get_usecs();
-  cilk_for(uint32_t i = 0; i < indxs_to_remove.size(); i++) {
-    concurrent_set.erase(data[indxs_to_remove[i]]);
-  }
-  // return {true, serial_time, parallel_time, serial_remove_time, parallel_remove_time};
-#endif
-
-  uint64_t parallel_remove_end = get_usecs();
-  uint64_t parallel_remove_time = parallel_remove_end - parallel_remove_start;
-
-  printf("removed half the data serially in %lu\n",
-         serial_remove_end - serial_remove_start);
-
-  printf("removed half the data in parallel in %lu\n",
-         parallel_remove_end - parallel_remove_start);
-
-  if (serial_set.size() != concurrent_set.size()) {
-    printf("the sizes don't match, got %lu, expetected %lu\n",
-           concurrent_set.size(), serial_set.size());
-    return {false, 0, 0, 0, 0};
-  }
-  printf("inserted %lu elements\n", serial_set.size());
-  it_serial = serial_set.begin();
-  it_concurrent = concurrent_set.begin();
-  wrong = false;
-  for (uint64_t i = 0; i < serial_set.size(); i++) {
-    if (*it_serial != *it_concurrent) {
-      printf("don't match in position %lu, got %lu, expected %lu\n", i,
-             *it_concurrent, *it_serial);
-      wrong = true;
+    // add other stuff
+    start = get_usecs();
+    for(uint32_t i = 0; i < num_to_add; i++) {
+      s.insert(data_to_add[i]);
     }
-    it_serial++;
-    it_concurrent++;
-  }
-  if (wrong) {
-    return {false, 0, 0, 0, 0};
+    end = get_usecs();
+
+    printf("num to add serial %u in time %lu\n", num_to_add, end - start);
   }
 
-  return {true, serial_time, parallel_time, serial_remove_time,
-          parallel_remove_time};
-*/
+  // do 5 trials of parallel version
+  uint32_t num_trials = 5;
+  for(uint32_t num_to_add = 1; num_to_add <= max_size; num_to_add *= 10) {
+    std::vector<uint64_t> insert_times;
+    std::vector<uint64_t> sum_times;
+    for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
+      tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                   std::allocator<T>, true> s_concurrent;
+
+      start = get_usecs();
+      cilk_for (uint32_t i = 0; i < max_size; i++) {
+        s_concurrent.insert(data[i]);
+      }
+      end = get_usecs();
+
+      printf("\n\nconcurrently added %lu elts in %lu\n", max_size, end - start);
+      printf("\tconcurrent add %u other elts\n", num_to_add);
+      std::vector<T> data_to_add = create_random_data_in_parallel<T>(num_to_add, std::numeric_limits<T>::max(), seed_offset);
+      start = get_usecs();
+      cilk_for(uint32_t i = 0; i < num_to_add; i++) {
+        s_concurrent.insert(data_to_add[i]);
+      }
+      end = get_usecs();
+
+      concurrent_insert_time = end - start;
+      printf("\tadded extra elts in %lu\n", end - start);
+      if (trial > 0) {
+        insert_times.push_back(concurrent_insert_time);
+      }
+
+      start = get_usecs();
+      uint64_t psum = s_concurrent.psum();
+      end = get_usecs();
+
+      printf("\tpsum_time, %lu, psum_total, %lu\n", end - start, psum);
+      uint64_t psum_time = end - start;
+      if (trial > 0) {
+        sum_times.push_back(psum_time);
+      }
+    #if DEBUG
+        std::set<T> inserted_data;
+        for(uint64_t i = 0; i < max_size; i++) {
+          inserted_data.insert(data[i]);
+        }
+
+        uint64_t correct_sum = 0;
+    #if DEBUG_PRINT
+        printf("*** CORRECT SET ***\n");
+    #endif
+        for(auto e : inserted_data) {
+
+    #if DEBUG_PRINT
+          printf("%lu\n", e);
+    #endif
+          correct_sum += e;
+        }
+
+        tbassert(correct_sum == sum, "got sum %lu, should be %lu\n", sum, correct_sum);
+        tbassert(correct_sum == concurrent_sum, "concurrent got sum %lu, should be %lu\n", concurrent_sum, correct_sum);
+
+    #endif
+    }
+    std::sort(insert_times.begin(), insert_times.end());
+    concurrent_insert_time = insert_times[num_trials / 2];
+    printf("num to add concurrent %u in time %lu\n", num_to_add, concurrent_insert_time);
+  }
 }
 
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
@@ -2546,7 +2608,8 @@ int main(int argc, char *argv[]) {
   outfile.open("range_queries.csv", std::ios_base::app); 
   outfile << "tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
-  auto result = test_concurrent_btreeset<uint64_t>(n, seed);
+  test_unordered_insert_from_base<uint64_t>(n, seed);
+  // auto result = test_concurrent_btreeset<uint64_t>(n, seed);
   // auto serial_time = std::get<1>(result);
   // auto parallel_time = std::get<2>(result);
   // printf("speedup = %f\n", (double)serial_time/(double)parallel_time);
