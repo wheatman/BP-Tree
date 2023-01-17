@@ -33,6 +33,33 @@ std::vector<T> create_random_data(size_t n, size_t max_val,
   return v;
 }
 
+
+template <class T>
+std::vector<T> create_random_data_in_parallel(size_t n, size_t max_val,
+                                                   uint64_t seed_add = 0) {
+
+  std::vector<T> v(n);
+  uint64_t per_worker = (n / ParallelTools::getWorkers()) + 1;
+  ParallelTools::parallel_for(0, ParallelTools::getWorkers(), [&](uint64_t i) {
+    uint64_t start = i * per_worker;
+    uint64_t end = (i + 1) * per_worker;
+    if (end > n) {
+      end = n;
+    }
+    if ((int)i == ParallelTools::getWorkers() - 1) {
+      end = n;
+    }
+    std::random_device rd;
+    std::mt19937_64 eng(i + seed_add); // a source of random data
+
+    std::uniform_int_distribution<uint64_t> dist(0, max_val);
+    for (size_t j = start; j < end; j++) {
+      v[j] = dist(eng);
+    }
+  });
+  return v;
+}
+
 template <class T>
 std::vector<T> create_random_data_in_parallel(size_t n, size_t max_val,
                                                    uint64_t seed_add = 0) {
@@ -182,6 +209,8 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     printf("num to add serial %u in time %lu\n", num_to_add, end - start);
   }
 #endif
+
+
   // do 5 trials of parallel version
   uint32_t num_trials = 5;
   for(uint32_t num_to_add = 1; num_to_add <= max_size; num_to_add *= 10) {
@@ -230,7 +259,6 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
       start = get_usecs();
       uint64_t psum = s_concurrent.psum();
       end = get_usecs();
-
       printf("\tpsum_time, %lu, psum_total, %lu\n", end - start, psum);
       uint64_t psum_time = end - start;
       if (trial > 0) {
@@ -2878,7 +2906,6 @@ int main(int argc, char *argv[]) {
   outfile.open("range_queries.csv", std::ios_base::app); 
   outfile << "tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
-  // test_unordered_insert_from_base<uint64_t>(n, seed);
   // auto result = test_concurrent_btreeset<uint64_t>(n, seed);
   // auto serial_time = std::get<1>(result);
   // auto parallel_time = std::get<2>(result);
