@@ -1148,8 +1148,28 @@ private:
     //! Memory allocator.
     allocator_type allocator_;
 
-    //! \}
+public:
+    // counts for lock grabs
+#if TIME_LOCKING
+    ParallelTools::Reducer_sum<uint64_t> read_lock_count;
+    ParallelTools::Reducer_sum<uint64_t> write_lock_count;
+    ParallelTools::Reducer_sum<uint64_t> leaf_lock_count;
 
+    void get_lock_counts() {
+      printf("read lock count = %lu, write_lock_count = %lu, leaf lock count = %lu\n", read_lock_count.get(), write_lock_count.get(), leaf_lock_count.get());
+    }
+
+    void reset_lock_counts() {
+      read_lock_count-=read_lock_count.get();
+      write_lock_count-=write_lock_count.get();
+      leaf_lock_count-=leaf_lock_count.get();
+    }
+
+    uint64_t get_read_lock_count() { return read_lock_count.get(); }
+    uint64_t get_write_lock_count() { return write_lock_count.get(); }
+    uint64_t get_leaf_lock_count() { return leaf_lock_count.get(); }
+    //! \}
+#endif
 public:
     //! \name Constructors and Destructor
     //! \{
@@ -2230,10 +2250,12 @@ private:
                 }
                 // printf("trying to lock the main lock in shared mode\n");
                 mutex.read_lock(cpu_id);
+                read_lock_count.inc();
                 // printf("locked the main lock in shared mode\n");
             } else {
                 // printf("trying to lock the main lock in exclusive mode\n");
                 mutex.write_lock();
+                write_lock_count.inc();
                 // printf("locked the main lock in exclusive mode\n");
             }
 #if TIME_LOCKING
@@ -2371,12 +2393,14 @@ private:
                 if constexpr (optimism) {
                     // printf("trying to lock a inner node lock %p in shared mode\n", inner);
                     inner->mutex_.read_lock(cpu_id);
+                    read_lock_count.inc();
                     (*parent_lock)->read_unlock(cpu_id);
                     *parent_lock = nullptr;
                     // printf("locked a inner node lock %p in shared mode\n", inner);
                 } else {
                     // printf("trying to lock a inner node lock %p in exclusive mode\n", inner);
                     inner->mutex_.write_lock();
+                    write_lock_count.inc();
                     // if (inner->slotuse < inner_slotmax-1) {
                     //     (*parent_lock)->write_unlock();
                     //     *parent_lock = nullptr;
@@ -2543,9 +2567,11 @@ private:
             if constexpr (concurrent) {
 #if TIME_LOCKING
                 lock_timer.start();
+                leaf_lock_count.inc();
 #endif
                 // printf("trying to lock leaf lock from %p\n", leaf);
                 leaf->mutex_.lock();
+                
                 if constexpr (optimism) {
                     if (!leaf->is_full()) {
                         (*parent_lock)->read_unlock(cpu_id);

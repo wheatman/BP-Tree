@@ -448,6 +448,15 @@ public:
     { }
 
     //! \}
+public:
+#if TIME_LOCKING
+  void get_lock_counts() { tree_.get_lock_counts(); }
+  void reset_lock_counts() { tree_.reset_lock_counts(); }
+  uint64_t get_read_lock_count() { return tree_.get_read_lock_count(); }
+  uint64_t get_write_lock_count() { return tree_.get_write_lock_count(); }
+  uint64_t get_leaf_lock_count() { return tree_.get_leaf_lock_count(); }
+#endif
+
 
 public:
     //! \name Public Insertion Functions
