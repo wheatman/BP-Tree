@@ -2632,6 +2632,245 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     printf("num to add concurrent %u in time %lu\n", num_to_add, concurrent_insert_time);
   }
 }
+
+
+// start x add y
+// start = unif, add = zipf
+template <class T>
+void test_unordered_insert_from_base_zipf(uint64_t max_size, std::seed_seq &seed, char* filename) {
+  if (max_size > std::numeric_limits<T>::max()) {
+    max_size = std::numeric_limits<T>::max();
+  }
+  uint32_t seed_offset = 100;
+  // for debugging
+  std::vector<T> data =
+      create_random_data_in_parallel<T>(max_size, 1UL << 32); //std::numeric_limits<T>::max());
+
+  printf("finished creating data\n");
+  uint64_t start, end, concurrent_insert_time, serial_insert_time;
+
+  printf("start reading file\n");
+  // read in file
+  std::vector<T> data_to_add;
+  std::ifstream input_file(filename);
+
+  // read in data from file
+  uint32_t temp;
+  for( std::string line; getline( input_file, line ); ) {
+    std::istringstream iss(line);
+    if(!(iss >> temp)) { break; }
+    data_to_add.push_back(temp);
+  }
+  std::cout << filename << std::endl;
+  printf("finished reading file, %lu elts\n", data_to_add.size());
+
+  // add all sizes up until max_size
+  for(uint32_t num_to_add = 1; num_to_add < max_size; num_to_add *= 10) {
+    // first start with serial version
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, false>
+      s;
+    start = get_usecs();
+    for (uint32_t i = 0; i < max_size; i++) {
+      s.insert(data[i]);
+    }
+    end = get_usecs();
+    serial_insert_time = end - start;
+    printf("\nserially inserted %lu elts in %lu \n", max_size, end - start);
+    printf("\tadd %u other elts\n", num_to_add);
+
+    // add other stuff
+    assert(num_to_add <= data_to_add.size());
+    start = get_usecs();
+    for(uint32_t i = 0; i < num_to_add; i++) {
+      s.insert(data_to_add[i]);
+    }
+    end = get_usecs();
+    printf("num to add serial %u in time %lu\n", num_to_add, end - start);
+  }
+
+  // do 5 trials of parallel version
+  uint32_t num_trials = 5;
+  for(uint32_t num_to_add = 1; num_to_add < max_size; num_to_add *= 10) {
+    std::vector<uint64_t> insert_times;
+    std::vector<uint64_t> sum_times;
+    for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
+      tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true> s_concurrent;
+      start = get_usecs();
+      cilk_for (uint32_t i = 0; i < max_size; i++) {
+        s_concurrent.insert(data[i]);
+      }
+      end = get_usecs();
+
+      printf("\n\nconcurrently added %lu elts in %lu\n", max_size, end - start);
+      printf("\tconcurrent add %u other elts\n", num_to_add);
+      start = get_usecs();
+      cilk_for(uint32_t i = 0; i < num_to_add; i++) {
+        s_concurrent.insert(data_to_add[i]);
+      }
+      end = get_usecs();
+
+      concurrent_insert_time = end - start;
+      printf("\tadded extra elts in %lu\n", end - start);
+      if (trial > 0) {
+        insert_times.push_back(concurrent_insert_time);
+       }
+      start = get_usecs();
+      uint64_t psum = s_concurrent.psum();
+      end = get_usecs();
+
+      printf("\tpsum_time, %lu, psum_total, %lu\n", end - start, psum);
+      uint64_t psum_time = end - start;
+      if (trial > 0) {
+        sum_times.push_back(psum_time);
+      }
+    #if DEBUG
+        std::set<T> inserted_data;
+        for(uint64_t i = 0; i < max_size; i++) {
+          inserted_data.insert(data[i]);
+        }
+
+        uint64_t correct_sum = 0;
+    #if DEBUG_PRINT
+        printf("*** CORRECT SET ***\n");
+    #endif
+        for(auto e : inserted_data) {
+
+    #if DEBUG_PRINT
+          printf("%lu\n", e);
+    #endif
+          correct_sum += e;
+        }
+
+        tbassert(correct_sum == sum, "got sum %lu, should be %lu\n", sum, correct_sum);
+        tbassert(correct_sum == concurrent_sum, "concurrent got sum %lu, should be %lu\n", concurrent_sum, correct_sum);
+
+    #endif
+    }
+    std::sort(insert_times.begin(), insert_times.end());
+    concurrent_insert_time = insert_times[num_trials / 2];
+    printf("num to add concurrent %u in time %lu\n", num_to_add, concurrent_insert_time);
+  }
+}
+
+// start x add y
+// start = unif, add = zipf
+template <class T>
+void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &seed) {
+  if (max_size > std::numeric_limits<T>::max()) {
+    max_size = std::numeric_limits<T>::max();
+  }
+  uint32_t seed_offset = 100;
+  // for debugging
+  std::vector<T> data =
+      create_random_data_in_parallel<T>(max_size, 1UL << 32); //std::numeric_limits<T>::max());
+
+  printf("finished creating data\n");
+  uint64_t start, end, concurrent_insert_time, serial_insert_time;
+
+
+  std::vector<T> data_to_add;
+
+  for(uint64_t i = 1; i <= max_size; i++) {
+    data_to_add.push_back(i);
+  }
+
+  auto rng = std::default_random_engine {};
+  std::shuffle(std::begin(data_to_add), std::end(data_to_add), rng);
+
+  // add all sizes up until max_size
+  for(uint32_t num_to_add = 1; num_to_add < max_size; num_to_add *= 10) {
+    // first start with serial version
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, false>
+      s;
+    start = get_usecs();
+    for (uint32_t i = 0; i < max_size; i++) {
+      s.insert(data[i]);
+    }
+    end = get_usecs();
+    serial_insert_time = end - start;
+    printf("\nserially inserted %lu elts in %lu \n", max_size, end - start);
+    printf("\tadd %u other elts\n", num_to_add);
+
+    // add other stuff
+    assert(num_to_add <= data_to_add.size());
+    start = get_usecs();
+    for(uint32_t i = 0; i < num_to_add; i++) {
+      s.insert(data_to_add[i]);
+    }
+    end = get_usecs();
+    printf("num to add serial %u in time %lu\n", num_to_add, end - start);
+  }
+
+  // do 5 trials of parallel version
+  uint32_t num_trials = 5;
+  for(uint32_t num_to_add = 1; num_to_add < max_size; num_to_add *= 10) {
+    std::vector<uint64_t> insert_times;
+    std::vector<uint64_t> sum_times;
+    for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
+      tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true> s_concurrent;
+      start = get_usecs();
+      cilk_for (uint32_t i = 0; i < max_size; i++) {
+        s_concurrent.insert(data[i]);
+      }
+      end = get_usecs();
+
+      printf("\n\nconcurrently added %lu elts in %lu\n", max_size, end - start);
+      printf("\tconcurrent add %u other elts\n", num_to_add);
+      start = get_usecs();
+      cilk_for(uint32_t i = 0; i < num_to_add; i++) {
+        s_concurrent.insert(data_to_add[i]);
+      }
+      end = get_usecs();
+
+      concurrent_insert_time = end - start;
+      printf("\tadded extra elts in %lu\n", end - start);
+      if (trial > 0) {
+        insert_times.push_back(concurrent_insert_time);
+       }
+      start = get_usecs();
+      uint64_t psum = s_concurrent.psum();
+      end = get_usecs();
+
+      printf("\tpsum_time, %lu, psum_total, %lu\n", end - start, psum);
+      uint64_t psum_time = end - start;
+      if (trial > 0) {
+        sum_times.push_back(psum_time);
+      }
+    #if DEBUG
+        std::set<T> inserted_data;
+        for(uint64_t i = 0; i < max_size; i++) {
+          inserted_data.insert(data[i]);
+        }
+
+        uint64_t correct_sum = 0;
+    #if DEBUG_PRINT
+        printf("*** CORRECT SET ***\n");
+    #endif
+        for(auto e : inserted_data) {
+
+    #if DEBUG_PRINT
+          printf("%lu\n", e);
+    #endif
+          correct_sum += e;
+        }
+
+        tbassert(correct_sum == sum, "got sum %lu, should be %lu\n", sum, correct_sum);
+        tbassert(correct_sum == concurrent_sum, "concurrent got sum %lu, should be %lu\n", concurrent_sum, correct_sum);
+
+    #endif
+    }
+    std::sort(insert_times.begin(), insert_times.end());
+    concurrent_insert_time = insert_times[num_trials / 2];
+    printf("num to add concurrent %u in time %lu\n", num_to_add, concurrent_insert_time);
+  }
+}
+
+
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("call with the number of elements to insert\n");
@@ -2643,8 +2882,11 @@ int main(int argc, char *argv[]) {
   int n = atoi(argv[1]);
   int num_queries = atoi(argv[2]);
   bool write_csv = true;
+  char* filename = argv[3];
+  //test_unordered_insert_from_base<uint64_t>(n, seed);
+  //test_unordered_insert_from_base_zipf<uint64_t>(n, seed, filename);
+  test_unordered_insert_from_base_start<uint64_t>(n, seed);
 
-  test_unordered_insert_from_base<uint64_t>(n, seed);
   return 0;
 
   std::ofstream outfile;
