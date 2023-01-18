@@ -2235,16 +2235,26 @@ test_bulk_load_map(uint64_t max_size, std::seed_seq &seed, bool write_csv, int n
 }
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    printf("call with the number of elements to insert\n");
-    return -1;
-  }
-  int trials = 5;
 
+  cxxopts::Options options("BtreeTester",
+                           "allows testing different attributes of the btree");
+
+  options.positional_help("Help Text");
+
+  // clang-format off
+  options.add_options()
+    ("trials", "how many values to insert", cxxopts::value<int>()->default_value( "5"))
+    ("num_inserts", "number of values to insert", cxxopts::value<int>()->default_value( "100000000"))
+    ("num_queries", "number of queries for query tests", cxxopts::value<int>()->default_value( "1000000"))
+    ("write_csv", "whether to write timings to disk")
+    ("microbenchmark_leafds", "run leafds 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]");
+    
   std::seed_seq seed{0};
-  int n = atoi(argv[1]);
-  int num_queries = atoi(argv[2]);
-  bool write_csv = true;
+  auto result = options.parse(argc, argv);
+  uint32_t trials = result["trials"].as<int>();
+  uint32_t num_inserts = result["num_inserts"].as<int>();
+  uint32_t num_queries = result["num_queries"].as<int>();
+  uint32_t write_csv = result["write_csv"].as<bool>();
 
   std::ofstream outfile;
   outfile.open("insert_finds.csv", std::ios_base::app); 
@@ -2254,9 +2264,14 @@ int main(int argc, char *argv[]) {
   outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
 
+  if (result["microbenchmark_leafds"].as<bool>()) {
+    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+    return !correct;
+  }
+
   // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_parallel_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
-  bool correct = test_parallel_iter_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_parallel_iter_merge_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // bool correct = test_iterator_merge_map<unsigned long, 1024>(n, seed, write_csv, trials);
   // test_concurrent_btreeset_scalability<unsigned long, 1024>(n, num_queries, seed, trials);
