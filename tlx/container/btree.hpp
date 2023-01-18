@@ -1154,12 +1154,14 @@ public:
     ParallelTools::Reducer_sum<uint64_t> read_lock_count;
     ParallelTools::Reducer_sum<uint64_t> write_lock_count;
     ParallelTools::Reducer_sum<uint64_t> leaf_lock_count;
+    ParallelTools::Reducer_sum<uint64_t> fail_count;
 
     void get_lock_counts() {
-      printf("read lock count = %lu, write_lock_count = %lu, leaf lock count = %lu\n", read_lock_count.get(), write_lock_count.get(), leaf_lock_count.get());
+      printf("read lock count = %lu, write_lock_count = %lu, leaf lock count = %lu, fail_count = %lu\n", read_lock_count.get(), write_lock_count.get(), leaf_lock_count.get(), fail_count.get());
     }
 
     void reset_lock_counts() {
+      fail_count-=fail_count.get();
       read_lock_count-=read_lock_count.get();
       write_lock_count-=write_lock_count.get();
       leaf_lock_count-=leaf_lock_count.get();
@@ -1168,6 +1170,8 @@ public:
     uint64_t get_read_lock_count() { return read_lock_count.get(); }
     uint64_t get_write_lock_count() { return write_lock_count.get(); }
     uint64_t get_leaf_lock_count() { return leaf_lock_count.get(); }
+    uint64_t get_fail_count() { return fail_count.get(); }
+
     //! \}
 #endif
 public:
@@ -2315,6 +2319,7 @@ private:
                 if (std::get<2>(r)) {
                     // printf("unlocking the main lock in shared mode\n");
 #if TIME_LOCKING
+                    fail_count.inc();
                     return insert_start<false>(key, value, lock_timer, cpu_id);
 #else
                     return insert_start<false>(key, value, cpu_id);

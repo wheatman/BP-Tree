@@ -455,6 +455,7 @@ public:
   uint64_t get_read_lock_count() { return tree_.get_read_lock_count(); }
   uint64_t get_write_lock_count() { return tree_.get_write_lock_count(); }
   uint64_t get_leaf_lock_count() { return tree_.get_leaf_lock_count(); }
+  uint64_t get_fail_count() { return tree_.get_fail_count(); }
 #endif
 
 

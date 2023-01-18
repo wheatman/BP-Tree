@@ -193,6 +193,7 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     std::vector<uint64_t> read_lock_counts;
     std::vector<uint64_t> write_lock_counts;
     std::vector<uint64_t> leaf_lock_counts;
+    std::vector<uint64_t> fail_counts;
 #endif
 
     for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
@@ -225,6 +226,7 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
         read_lock_counts.push_back( s_concurrent.get_read_lock_count() );
         write_lock_counts.push_back( s_concurrent.get_write_lock_count() );
         leaf_lock_counts.push_back( s_concurrent.get_leaf_lock_count() );
+        fail_counts.push_back( s_concurrent.get_fail_count() );
 #endif
       }
 
@@ -270,7 +272,8 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     auto read_lock_count = read_lock_counts[num_trials / 2];
     auto write_lock_count = write_lock_counts[num_trials / 2];
     auto leaf_lock_count = leaf_lock_counts[num_trials / 2];
-    printf("median read lock count = %lu, write lock count = %lu, leaf lock count = %lu\n", read_lock_count, write_lock_count, leaf_lock_count);
+    auto fail_count = fail_counts[num_trials / 2];
+    printf("median read lock count = %lu, write lock count = %lu, leaf lock count = %lu, fail count = %lu\n", read_lock_count, write_lock_count, leaf_lock_count, fail_count);
 #endif
   }
 }
