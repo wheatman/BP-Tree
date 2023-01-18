@@ -33,33 +33,6 @@ std::vector<T> create_random_data(size_t n, size_t max_val,
   return v;
 }
 
-
-template <class T>
-std::vector<T> create_random_data_in_parallel(size_t n, size_t max_val,
-                                                   uint64_t seed_add = 0) {
-
-  std::vector<T> v(n);
-  uint64_t per_worker = (n / ParallelTools::getWorkers()) + 1;
-  ParallelTools::parallel_for(0, ParallelTools::getWorkers(), [&](uint64_t i) {
-    uint64_t start = i * per_worker;
-    uint64_t end = (i + 1) * per_worker;
-    if (end > n) {
-      end = n;
-    }
-    if ((int)i == ParallelTools::getWorkers() - 1) {
-      end = n;
-    }
-    std::random_device rd;
-    std::mt19937_64 eng(i + seed_add); // a source of random data
-
-    std::uniform_int_distribution<uint64_t> dist(0, max_val);
-    for (size_t j = start; j < end; j++) {
-      v[j] = dist(eng);
-    }
-  });
-  return v;
-}
-
 template <class T>
 std::vector<T> create_random_data_in_parallel(size_t n, size_t max_val,
                                                    uint64_t seed_add = 0) {
@@ -180,6 +153,8 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
 
   uint64_t start, end, concurrent_insert_time, serial_insert_time;
 
+  std::vector<T> data_to_add = create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max(), seed_offset);
+
 #if RUN_SERIAL
   // add all sizes up until max_size
   for(uint32_t num_to_add = 1; num_to_add <= max_size; num_to_add *= 10) {
@@ -197,7 +172,6 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     printf("\nserially inserted %lu elts in %lu \n", max_size, end - start);
     printf("\tadd %u other elts\n", num_to_add);
 
-    std::vector<T> data_to_add = create_random_data_in_parallel<T>(num_to_add, std::numeric_limits<T>::max(), seed_offset);
 
     // add other stuff
     start = get_usecs();
@@ -209,7 +183,6 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     printf("num to add serial %u in time %lu\n", num_to_add, end - start);
   }
 #endif
-
 
   // do 5 trials of parallel version
   uint32_t num_trials = 5;
@@ -238,7 +211,6 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
 #endif
 
       printf("\tconcurrent add %u other elts\n", num_to_add);
-      std::vector<T> data_to_add = create_random_data_in_parallel<T>(num_to_add, std::numeric_limits<T>::max(), seed_offset);
       start = get_usecs();
       cilk_for(uint32_t i = 0; i < num_to_add; i++) {
         s_concurrent.insert(data_to_add[i]);

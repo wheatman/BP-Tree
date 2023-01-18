@@ -9,7 +9,7 @@ SANITIZE?=0
 CORRECTNESS?=0
 TIME_LOCKING?=0
 
-
+CXX=clang++
 CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../ -gdwarf-4
 
 ifeq ($(SANITIZE),1)

@@ -2250,12 +2250,16 @@ private:
                 }
                 // printf("trying to lock the main lock in shared mode\n");
                 mutex.read_lock(cpu_id);
+#if TIME_LOCKING
                 read_lock_count.inc();
+#endif
                 // printf("locked the main lock in shared mode\n");
             } else {
                 // printf("trying to lock the main lock in exclusive mode\n");
                 mutex.write_lock();
+#if TIME_LOCKING
                 write_lock_count.inc();
+#endif
                 // printf("locked the main lock in exclusive mode\n");
             }
 #if TIME_LOCKING
@@ -2393,14 +2397,18 @@ private:
                 if constexpr (optimism) {
                     // printf("trying to lock a inner node lock %p in shared mode\n", inner);
                     inner->mutex_.read_lock(cpu_id);
+#if TIME_LOCKING
                     read_lock_count.inc();
+#endif
                     (*parent_lock)->read_unlock(cpu_id);
                     *parent_lock = nullptr;
                     // printf("locked a inner node lock %p in shared mode\n", inner);
                 } else {
                     // printf("trying to lock a inner node lock %p in exclusive mode\n", inner);
                     inner->mutex_.write_lock();
+#if TIME_LOCKING
                     write_lock_count.inc();
+#endif
                     // if (inner->slotuse < inner_slotmax-1) {
                     //     (*parent_lock)->write_unlock();
                     //     *parent_lock = nullptr;
