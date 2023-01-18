@@ -993,22 +993,28 @@ void test_concurrent_sum(uint64_t max_size, std::seed_seq &seed) {
 }
 
 
-template <class T>
+template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials) {
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
 
-  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
-                 std::allocator<T>, true>
-      concurrent_set;
-  cilk_for(uint32_t i = 0; i < max_size; i++) {
-    concurrent_set.insert(data[i]);
-  }
-  std::vector<uint64_t> psum_times(trials);
+  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
+                  std::allocator<T>, true> concurrent_map;
+
+  // TIME INSERTS
   uint64_t start, end;
+
+  start = get_usecs();
+  cilk_for(uint32_t i = 0; i < max_size; i++) {
+    concurrent_map.insert({data[i], 2*data[i]});
+  }
+  end = get_usecs();
+  printf("\tDone inserting %lu elts in %lu\n",max_size, end - start);
+
+  std::vector<uint64_t> psum_times(trials);
   for(int i = 0; i < trials + 1; i++) {
           start = get_usecs();
-          auto concurrent_sum = concurrent_set.psum();
+          auto concurrent_sum = concurrent_map.psum();
           end = get_usecs();
 
           printf("concurrent btree sum got %lu\n", concurrent_sum);
@@ -2887,7 +2893,7 @@ int main(int argc, char *argv[]) {
     ("write_csv", "whether to write timings to disk")
     ("microbenchmark_baseline", "run baseline 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
     ("microbenchmark_allsize", "run all size btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
-    ("iterator_test", "verify correctness");
+    ("psum_baseline", "run baseline 1024 btree psum with [trials] [num_inserts]");
 
   std::seed_seq seed{0};
   auto result = options.parse(argc, argv);
@@ -2907,6 +2913,11 @@ int main(int argc, char *argv[]) {
   if (result["microbenchmark_baseline"].as<bool>()) {
     bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(num_inserts, num_queries, seed, write_csv, trials);
     return !correct;
+  }
+
+  if (result["psum_baseline"].as<bool>()) {
+    test_concurrent_sum_time<unsigned long, 1024, 1024>(num_inserts, seed, trials);
+    return 0;
   }
 
   if (result["microbenchmark_allsize"].as<bool>()) {
