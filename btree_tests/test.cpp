@@ -6,6 +6,7 @@
 #include <set>
 #include <map>
 #include <ParallelTools/parallel.h>
+#include "leafDS/cxxopts.hpp"
 #include <fstream>
 
 #include <tlx/container/btree_set.hpp>
@@ -215,13 +216,13 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
   return {true, serial_time, parallel_time, serial_remove_time, parallel_remove_time};
 }
 
-template <class T>
+template <class T, uint32_t internal_bytes>
 void test_concurrent_sum_correctness(uint64_t max_size, std::seed_seq &seed) {
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
   std::set<T> serial_set;
 
-  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
                     std::allocator<T>, false> serial_test_set;
 
   for (uint32_t i = 0; i < max_size; i++) {
@@ -258,7 +259,7 @@ void test_concurrent_sum_correctness(uint64_t max_size, std::seed_seq &seed) {
 }
 
 
-template <class T>
+template <class T, uint32_t internal_bytes>
 void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials) {
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
@@ -268,29 +269,29 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
   std::vector<uint64_t> with_subtract_times(trials);
   uint64_t start, end, map_time, subtract_time, insert_time;
   for(int i = 0; i < trials + 1; i++) {
-	  tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
-			 std::allocator<T>, false>
-	      concurrent_set;
-	  start = get_usecs();
-	  for(uint32_t i = 0; i < max_size; i++) {
-	    concurrent_set.insert(data[i]);
-	  }
-	  end = get_usecs();
-	  insert_time = end - start;
+	  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+                  std::allocator<T>, true> concurrent_map;
 
+    // TIME INSERTS
+    start = get_usecs();
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      concurrent_map.insert({data[i], 2*data[i]});
+    }
+    end = get_usecs();
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end - start);
 
 	  start = get_usecs();
-	  auto concurrent_sum = concurrent_set.psum_with_map();
+	  auto concurrent_sum = concurrent_map.psum_with_map();
 	  end = get_usecs();
 	  map_time = end - start;
 	  
-	  printf("\tconcurrent btree sum with map got %lu\n", concurrent_sum);
+	  printf("\tconcurrent btree sum with map got %lu in %lu\n", concurrent_sum, map_time);
 
 	  start = get_usecs();
-	  concurrent_sum = concurrent_set.psum_with_subtract();
+	  concurrent_sum = concurrent_map.psum_with_subtract();
 	  end = get_usecs();
 	  subtract_time = end - start;
-	  printf("\tconcurrent btree sum with subtract got %lu\n", concurrent_sum);
+	  printf("\tconcurrent btree sum with subtract got %lu in %lu\n", concurrent_sum, subtract_time);
 		  if(i > 0) {
 			  insert_times[i-1] = insert_time;
 			  with_map_times[i-1] = map_time;
@@ -2247,7 +2248,8 @@ int main(int argc, char *argv[]) {
     ("num_inserts", "number of values to insert", cxxopts::value<int>()->default_value( "100000000"))
     ("num_queries", "number of queries for query tests", cxxopts::value<int>()->default_value( "1000000"))
     ("write_csv", "whether to write timings to disk")
-    ("microbenchmark_leafds", "run leafds 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]");
+    ("microbenchmark_leafds", "run leafds 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
+    ("psum_leafds", "run leafds 1024 byte btree psum with [trials] [num_inserts]");
     
   std::seed_seq seed{0};
   auto result = options.parse(argc, argv);
@@ -2265,8 +2267,13 @@ int main(int argc, char *argv[]) {
   outfile.close();
 
   if (result["microbenchmark_leafds"].as<bool>()) {
-    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(n, num_queries, seed, write_csv, trials);
+    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(num_inserts, num_queries, seed, write_csv, trials);
     return !correct;
+  }
+
+  if (result["psum_leafds"].as<bool>()) {
+    test_concurrent_sum_time<unsigned long, 1024>(num_inserts, seed, trials);
+    return 0;
   }
 
   // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
