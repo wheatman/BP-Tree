@@ -7,6 +7,7 @@
 #include <set>
 #include <map>
 #include <ParallelTools/parallel.h>
+#include "leafDS/cxxopts.hpp"
 #include <iostream>
 #include <fstream>
 #include <chrono>
@@ -1375,8 +1376,8 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
-  std::vector<uint32_t> num_query_sizes{};
-  // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+  // std::vector<uint32_t> num_query_sizes{};
+  std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
   uint64_t start_time, end_time;
   std::vector<uint64_t> insert_times;
@@ -2872,22 +2873,28 @@ void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &see
 
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    printf("call with the number of elements to insert\n");
-    return -1;
-  }
-  int trials = 5;
+
+  cxxopts::Options options("BtreeTester",
+                           "allows testing different attributes of the btree");
+
+  options.positional_help("Help Text");
+
+  // clang-format off
+  options.add_options()
+    ("trials", "how many values to insert", cxxopts::value<int>()->default_value( "5"))
+    ("num_inserts", "number of values to insert", cxxopts::value<int>()->default_value( "100000000"))
+    ("num_queries", "number of queries for query tests", cxxopts::value<int>()->default_value( "1000000"))
+    ("write_csv", "whether to write timings to disk")
+    ("microbenchmark_baseline", "run baseline 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
+    ("microbenchmark_allsize", "run all size btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
+    ("iterator_test", "verify correctness");
 
   std::seed_seq seed{0};
-  int n = atoi(argv[1]);
-  int num_queries = atoi(argv[2]);
-  bool write_csv = true;
-  char* filename = argv[3];
-  //test_unordered_insert_from_base<uint64_t>(n, seed);
-  //test_unordered_insert_from_base_zipf<uint64_t>(n, seed, filename);
-  test_unordered_insert_from_base_start<uint64_t>(n, seed);
-
-  return 0;
+  auto result = options.parse(argc, argv);
+  uint32_t trials = result["trials"].as<int>();
+  uint32_t num_inserts = result["num_inserts"].as<int>();
+  uint32_t num_queries = result["num_queries"].as<int>();
+  uint32_t write_csv = result["write_csv"].as<bool>();
 
   std::ofstream outfile;
   outfile.open("insert_finds.csv", std::ios_base::app); 
@@ -2896,6 +2903,31 @@ int main(int argc, char *argv[]) {
   outfile.open("range_queries.csv", std::ios_base::app); 
   outfile << "tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
+
+  if (result["microbenchmark_baseline"].as<bool>()) {
+    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(num_inserts, num_queries, seed, write_csv, trials);
+    return !correct;
+  }
+
+  if (result["microbenchmark_allsize"].as<bool>()) {
+    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 256, 256>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 32768, 32768>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 65536, 65536>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 16384>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 32768>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 65536>(num_inserts, num_queries, seed, write_csv, trials);
+    return !correct;
+  }
+
   // auto result = test_concurrent_btreeset<uint64_t>(n, seed);
   // auto serial_time = std::get<1>(result);
   // auto parallel_time = std::get<2>(result);
@@ -2905,25 +2937,10 @@ int main(int argc, char *argv[]) {
   // bool correct = test_iterator_merge_range_version_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_bulk_load_map<unsigned long, 1024, 1024>(n, seed, write_csv, trials);
   // bool correct = test_parallel_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
-  bool correct = test_parallel_iter_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
+  // bool correct = test_parallel_iter_merge_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
     // this one ***
   // bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
   // test_concurrent_btreeset_scalability<unsigned long, 1024, 1024>(n, num_queries, seed, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 512, 512>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 1024>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 32768, 32768>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 65536, 65536>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 16384>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 32768>(n, num_queries, seed, write_csv, trials);
-  // correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 65536>(n, num_queries, seed, write_csv, trials);
-
 
   // if (!correct) {
   //   printf("got the wrong answer :(\n");
