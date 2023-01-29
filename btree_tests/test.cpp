@@ -59,7 +59,150 @@ std::vector<T> create_random_data_in_parallel(size_t n, size_t max_val,
   return v;
 }
 
+template <class T>
+void test_unordered_insert_then_find(uint64_t max_size, std::seed_seq &seed) {
+  if (max_size > std::numeric_limits<T>::max()) {
+    max_size = std::numeric_limits<T>::max();
+  }
+  std::vector<T> data =
+      create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max());
+  printf("finished creating data\n");
 
+  uint64_t start, end, concurrent_insert_time, serial_insert_time;
+
+  uint32_t num_trials = 5;
+  std::vector<uint64_t> insert_times;
+  std::vector<uint64_t> sum_times;
+  std::vector<uint64_t> find_times;
+
+  for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
+#if ENABLE_TRACE_TIMER
+    ParallelTools::Reducer_sum<uint64_t> total_insert;
+    ParallelTools::Reducer_sum<uint64_t> total_lock;
+#endif
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                   std::allocator<T>, true> s_concurrent;
+
+    // insert all elts concurrently
+    start = get_usecs();
+    ParallelTools::parallel_for(0, max_size, [&](uint64_t i) {
+      timer insert_timer("insert_timer");
+      insert_timer.start();
+      auto result = s_concurrent.insert(data[i]);
+      insert_timer.stop();
+#if ENABLE_TRACE_TIMER
+      total_insert.add(insert_timer.get_elapsed_time());
+      total_lock.add(result);
+#endif
+    });
+    end = get_usecs();
+
+#if ENABLE_TRACE_TIMER
+    printf("total concurrent insert time = %lu, locking time = %lu, percent time = %f\n", total_insert.get(), total_lock.get(), ((double)total_lock.get() /(double) total_insert.get())*100);
+#endif
+    concurrent_insert_time = end - start;
+    // printf("\n\tconcurrent insertion time %lu\n", concurrent_insert_time);
+    if (trial > 0) {
+      insert_times.push_back(concurrent_insert_time);
+    }
+    // parallel find
+    std::vector<int> found_count_parallel(max_size);
+    start = get_usecs();
+    ParallelTools::parallel_for(0, max_size, [&](uint64_t i) {
+      found_count_parallel[i] = s_concurrent.exists(data[i]);
+    });
+
+    end = get_usecs();
+    uint64_t parallel_find_time = end - start;
+    int num_found = 0;
+    for(auto e : found_count_parallel) { num_found += e; }
+    printf("\ttrial %u, found count = %d\n", trial, num_found);
+    assert(num_found == max_size);
+    if (trial > 0) {
+      find_times.push_back(parallel_find_time);
+    }
+  }
+  std::sort(insert_times.begin(), insert_times.end());
+  std::sort(find_times.begin(), find_times.end());
+  concurrent_insert_time = insert_times[num_trials / 2];
+  auto concurrent_find_time = find_times[num_trials / 2];
+  printf("concurrent insert time = %lu, find time = %lu\n", concurrent_insert_time, concurrent_find_time);
+}
+template <class T>
+void test_unordered_insert_and_find(uint64_t max_size, std::seed_seq &seed) {
+  if (max_size > std::numeric_limits<T>::max()) {
+    max_size = std::numeric_limits<T>::max();
+  }
+  std::vector<T> data =
+      create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max());
+  printf("finished creating data\n");
+
+  uint64_t start, end, concurrent_insert_time, serial_insert_time;
+
+  uint32_t seed_offset = 100;
+  std::vector<T> data_to_add = create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max(), seed_offset);
+
+  uint32_t num_trials = 5;
+  std::vector<uint64_t> insert_times;
+  std::vector<uint64_t> find_times;
+
+  for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
+#if ENABLE_TRACE_TIMER
+    ParallelTools::Reducer_sum<uint64_t> total_insert;
+    ParallelTools::Reducer_sum<uint64_t> total_lock;
+#endif
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                   std::allocator<T>, true> s_concurrent;
+    // insert all elts concurrently
+    start = get_usecs();
+    ParallelTools::parallel_for(0, max_size, [&](uint64_t i) {
+      timer insert_timer("insert_timer");
+      insert_timer.start();
+      auto result = s_concurrent.insert(data[i]);
+      insert_timer.stop();
+#if ENABLE_TRACE_TIMER
+      total_insert.add(insert_timer.get_elapsed_time());
+      total_lock.add(result);
+#endif
+    });
+    end = get_usecs();
+#if ENABLE_TRACE_TIMER
+    printf("total concurrent insert time = %lu, locking time = %lu, percent time = %f\n", total_insert.get(), total_lock.get(), ((double)total_lock.get() /(double) total_insert.get())*100);
+#endif
+    concurrent_insert_time = end - start;
+    // printf("\n\tconcurrent insertion time %lu\n", concurrent_insert_time);
+    if (trial > 0) {
+      insert_times.push_back(concurrent_insert_time);
+    }
+
+    // parallel find
+    std::vector<int> found_count_parallel(max_size);
+    uint32_t percent_finds = 5;
+    start = get_usecs();
+    ParallelTools::parallel_for(0, max_size, [&](uint64_t i) {
+      if (i % 100 < percent_finds) {
+        found_count_parallel[i] = s_concurrent.exists(data[i]);
+
+      } else {
+        s_concurrent.insert(data_to_add[i]);
+      }
+    });
+    end = get_usecs();
+    uint64_t parallel_find_time = end - start;
+    int num_found = 0;
+    for(auto e : found_count_parallel) { num_found += e; }
+    printf("\ttrial %u, found count = %d\n", trial, num_found);
+    assert(num_found == max_size);
+    if (trial > 0) {
+      find_times.push_back(parallel_find_time);
+    }
+  }
+  std::sort(insert_times.begin(), insert_times.end());
+  std::sort(find_times.begin(), find_times.end());
+  concurrent_insert_time = insert_times[num_trials / 2];
+  auto concurrent_find_time = find_times[num_trials / 2];
+  printf("concurrent insert time = %lu, mixed time = %lu\n", concurrent_insert_time, concurrent_find_time);
+}
 
 template <class T>
 std::tuple<bool, uint64_t, uint64_t, uint64_t, uint64_t>
@@ -138,6 +281,8 @@ test_concurrent_btreeset(uint64_t max_size, std::seed_seq &seed) {
 
   return {true, serial_insert_time, concurrent_insert_time, 0, 0};
 }
+
+
 
 template <class T>
 void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
@@ -2743,17 +2888,17 @@ void test_unordered_insert_from_base_zipf(uint64_t max_size, std::seed_seq &seed
 // start = unif, add = zipf
 template <class T>
 void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &seed) {
+  printf("*** INSERT THEN ADD TO BASE WITH n = %lu\n", max_size);
   if (max_size > std::numeric_limits<T>::max()) {
     max_size = std::numeric_limits<T>::max();
   }
   uint32_t seed_offset = 100;
   // for debugging
   std::vector<T> data =
-      create_random_data_in_parallel<T>(max_size, 1UL << 32); //std::numeric_limits<T>::max());
+      create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max());
 
   printf("finished creating data\n");
   uint64_t start, end, concurrent_insert_time, serial_insert_time;
-
 
   std::vector<T> data_to_add;
 
@@ -2764,8 +2909,9 @@ void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &see
   auto rng = std::default_random_engine {};
   std::shuffle(std::begin(data_to_add), std::end(data_to_add), rng);
 
+#if RUN_SERIAL
   // add all sizes up until max_size
-  for(uint32_t num_to_add = 1; num_to_add < max_size; num_to_add *= 10) {
+  for(uint32_t num_to_add = 1; num_to_add <= max_size; num_to_add *= 10) {
     // first start with serial version
     tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                  std::allocator<T>, false>
@@ -2788,12 +2934,21 @@ void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &see
     end = get_usecs();
     printf("num to add serial %u in time %lu\n", num_to_add, end - start);
   }
+#endif
 
   // do 5 trials of parallel version
   uint32_t num_trials = 5;
-  for(uint32_t num_to_add = 1; num_to_add < max_size; num_to_add *= 10) {
+  for(uint32_t num_to_add = 1; num_to_add <= max_size; num_to_add *= 10) {
     std::vector<uint64_t> insert_times;
     std::vector<uint64_t> sum_times;
+
+#if TIME_LOCKING
+    std::vector<uint64_t> read_lock_counts;
+    std::vector<uint64_t> write_lock_counts;
+    std::vector<uint64_t> leaf_lock_counts;
+    std::vector<uint64_t> fail_counts;
+#endif
+
     for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
       tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
                  std::allocator<T>, true> s_concurrent;
@@ -2803,7 +2958,14 @@ void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &see
       }
       end = get_usecs();
 
+
       printf("\n\nconcurrently added %lu elts in %lu\n", max_size, end - start);
+
+#if TIME_LOCKING
+      s_concurrent.get_lock_counts();
+      s_concurrent.reset_lock_counts();
+#endif
+
       printf("\tconcurrent add %u other elts\n", num_to_add);
       start = get_usecs();
       cilk_for(uint32_t i = 0; i < num_to_add; i++) {
@@ -2815,6 +2977,12 @@ void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &see
       printf("\tadded extra elts in %lu\n", end - start);
       if (trial > 0) {
         insert_times.push_back(concurrent_insert_time);
+#if TIME_LOCKING
+        read_lock_counts.push_back( s_concurrent.get_read_lock_count() );
+        write_lock_counts.push_back( s_concurrent.get_write_lock_count() );
+        leaf_lock_counts.push_back( s_concurrent.get_leaf_lock_count() );
+        fail_counts.push_back( s_concurrent.get_fail_count() );
+#endif
        }
       start = get_usecs();
       uint64_t psum = s_concurrent.psum();
@@ -2851,6 +3019,17 @@ void test_unordered_insert_from_base_start(uint64_t max_size, std::seed_seq &see
     std::sort(insert_times.begin(), insert_times.end());
     concurrent_insert_time = insert_times[num_trials / 2];
     printf("num to add concurrent %u in time %lu\n", num_to_add, concurrent_insert_time);
+
+#if TIME_LOCKING
+    std::sort(read_lock_counts.begin(), read_lock_counts.end());
+    std::sort(write_lock_counts.begin(), write_lock_counts.end());
+    std::sort(leaf_lock_counts.begin(), leaf_lock_counts.end());
+    auto read_lock_count = read_lock_counts[num_trials / 2];
+    auto write_lock_count = write_lock_counts[num_trials / 2];
+    auto leaf_lock_count = leaf_lock_counts[num_trials / 2];
+    auto fail_count = fail_counts[num_trials / 2];
+    printf("median read lock count = %lu, write lock count = %lu, leaf lock count = %lu, fail count = %lu\n", read_lock_count, write_lock_count, leaf_lock_count, fail_count);
+#endif
   }
 }
 
@@ -2868,7 +3047,10 @@ int main(int argc, char *argv[]) {
   int num_queries = atoi(argv[2]);
   bool write_csv = true;
   char* filename = argv[3];
-  test_unordered_insert_from_base<uint64_t>(n, seed);
+  test_unordered_insert_then_find<uint64_t>(n, seed);  
+  test_unordered_insert_and_find<uint64_t>(n, seed);  
+  // test_unordered_insert_from_base_start<uint64_t>(n, seed);
+
   //test_unordered_insert_from_base_zipf<uint64_t>(n, seed, filename);
   //test_unordered_insert_from_base_start<uint64_t>(n, seed);
 
