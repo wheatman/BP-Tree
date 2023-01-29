@@ -76,7 +76,7 @@ void test_unordered_insert_then_find(uint64_t max_size, std::seed_seq &seed) {
   std::vector<uint64_t> find_times;
 
   for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     ParallelTools::Reducer_sum<uint64_t> total_insert;
     ParallelTools::Reducer_sum<uint64_t> total_lock;
 #endif
@@ -90,14 +90,14 @@ void test_unordered_insert_then_find(uint64_t max_size, std::seed_seq &seed) {
       insert_timer.start();
       auto result = s_concurrent.insert(data[i]);
       insert_timer.stop();
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
       total_insert.add(insert_timer.get_elapsed_time());
-      total_lock.add(result);
+      total_lock.add(std::get<2>(result));
 #endif
     });
     end = get_usecs();
 
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     printf("total concurrent insert time = %lu, locking time = %lu, percent time = %f\n", total_insert.get(), total_lock.get(), ((double)total_lock.get() /(double) total_insert.get())*100);
 #endif
     concurrent_insert_time = end - start;
@@ -128,6 +128,7 @@ void test_unordered_insert_then_find(uint64_t max_size, std::seed_seq &seed) {
   auto concurrent_find_time = find_times[num_trials / 2];
   printf("concurrent insert time = %lu, find time = %lu\n", concurrent_insert_time, concurrent_find_time);
 }
+
 template <class T>
 void test_unordered_insert_and_find(uint64_t max_size, std::seed_seq &seed) {
   if (max_size > std::numeric_limits<T>::max()) {
@@ -147,7 +148,7 @@ void test_unordered_insert_and_find(uint64_t max_size, std::seed_seq &seed) {
   std::vector<uint64_t> find_times;
 
   for(uint32_t trial = 0; trial < num_trials + 1; trial++) {
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     ParallelTools::Reducer_sum<uint64_t> total_insert;
     ParallelTools::Reducer_sum<uint64_t> total_lock;
 #endif
@@ -160,13 +161,13 @@ void test_unordered_insert_and_find(uint64_t max_size, std::seed_seq &seed) {
       insert_timer.start();
       auto result = s_concurrent.insert(data[i]);
       insert_timer.stop();
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
       total_insert.add(insert_timer.get_elapsed_time());
-      total_lock.add(result);
+      total_lock.add(std::get<2>(result));
 #endif
     });
     end = get_usecs();
-#if ENABLE_TRACE_TIMER
+#if TIME_LOCKING
     printf("total concurrent insert time = %lu, locking time = %lu, percent time = %f\n", total_insert.get(), total_lock.get(), ((double)total_lock.get() /(double) total_insert.get())*100);
 #endif
     concurrent_insert_time = end - start;
@@ -421,6 +422,93 @@ void test_unordered_insert_from_base(uint64_t max_size, std::seed_seq &seed) {
     printf("median read lock count = %lu, write lock count = %lu, leaf lock count = %lu, fail count = %lu\n", read_lock_count, write_lock_count, leaf_lock_count, fail_count);
 #endif
   }
+}
+
+template <class T>
+void test_btreeset_latencies(uint64_t max_size) {
+  std::vector<T> data =
+      create_random_data_in_parallel<T>(max_size, std::numeric_limits<T>::max());  
+  printf("done generating the data\n");
+#if ENABLE_TRACE_TIMER == 1
+  std::vector<uint64_t> insert_times(max_size);
+  std::vector<uint64_t> find_times(max_size);
+  std::vector<uint64_t> insert_50;
+  std::vector<uint64_t> insert_90;
+  std::vector<uint64_t> insert_99;
+  std::vector<uint64_t> insert_999;
+  std::vector<uint64_t> insert_max;
+  std::vector<uint64_t> find_50;
+  std::vector<uint64_t> find_90;
+  std::vector<uint64_t> find_99;
+  std::vector<uint64_t> find_999;
+  std::vector<uint64_t> find_max;
+#endif
+  int num_trials = 5;
+  for (int j = 0; j <= num_trials; j++) {
+    tlx::btree_set<T, std::less<T>, tlx::btree_default_traits<T, T>,
+                 std::allocator<T>, true> s_concurrent;
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      uint64_t start_time, end_time;
+      start_time = get_usecs();
+      s_concurrent.insert(data[i]);
+      end_time = get_usecs();
+  #if ENABLE_TRACE_TIMER == 1
+      insert_times[i] = end_time - start_time;
+  #endif
+    }
+#if ENABLE_TRACE_TIMER == 1
+    std::sort(insert_times.begin(), insert_times.end());
+    if (j > 0) {
+      insert_50.push_back(insert_times[insert_times.size() / 2]);
+      insert_90.push_back(insert_times[insert_times.size() * 9 / 10]);
+      insert_99.push_back(insert_times[insert_times.size() * 99 / 100]);
+      insert_999.push_back(insert_times[insert_times.size() * 999 / 1000]);
+      insert_max.push_back(insert_times[insert_times.size() - 1]);
+    }
+#endif
+    
+    // TIME POINT FINDS
+    std::vector<bool> found_count(max_size);
+    cilk_for(uint32_t i = 0; i < max_size; i++) {
+      uint64_t start_time, end_time;
+      start_time = get_usecs();
+      found_count[i] = s_concurrent.exists(data[i]);
+      end_time = get_usecs();
+    #if ENABLE_TRACE_TIMER == 1
+      find_times[i] = end_time - start_time;
+    #endif
+    }
+    int count_found = 0;
+    for (auto e : found_count) {
+      count_found += e ? 1 : 0;
+    }
+    printf("\tDone finding %lu elts, count = %d \n", max_size, count_found);
+#if ENABLE_TRACE_TIMER == 1
+    std::sort(find_times.begin(), find_times.end());
+    if (j > 0) {
+      find_50.push_back(find_times[find_times.size() / 2]);
+      find_90.push_back(find_times[find_times.size() * 9 / 10]);
+      find_99.push_back(find_times[find_times.size() * 99 / 100]);
+      find_999.push_back(find_times[find_times.size() * 999 / 1000]);
+      find_max.push_back(find_times[find_times.size() - 1]);
+    }
+#endif
+  }
+#if ENABLE_TRACE_TIMER == 1
+  std::sort(insert_50.begin(), insert_50.end());
+  std::sort(insert_90.begin(), insert_90.end());
+  std::sort(insert_99.begin(), insert_99.end());
+  std::sort(insert_999.begin(), insert_999.end());
+  std::sort(insert_max.begin(), insert_max.end());
+  std::sort(find_50.begin(), find_50.end());
+  std::sort(find_90.begin(), find_90.end());
+  std::sort(find_99.begin(), find_99.end());
+  std::sort(find_999.begin(), find_999.end());
+  std::sort(find_max.begin(), find_max.end());
+  printf("insert percentiles: 50th %lu, 90th %lu, 99th %lu, 99.9th %lu, max %lu\n", insert_50[num_trials / 2], insert_90[num_trials / 2], insert_99[num_trials / 2], insert_999[num_trials / 2], insert_max[num_trials / 2]);
+
+  printf("find percentiles: 50th %lu, 90th %lu, 99th %lu, 99.9th %lu, max %lu\n", find_50[num_trials / 2], find_90[num_trials / 2], find_99[num_trials / 2], find_999[num_trials / 2], find_max[num_trials / 2]);
+#endif
 }
 
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
@@ -3047,6 +3135,8 @@ int main(int argc, char *argv[]) {
   int num_queries = atoi(argv[2]);
   bool write_csv = true;
   char* filename = argv[3];
+  test_btreeset_latencies<uint64_t>(n);
+
   test_unordered_insert_then_find<uint64_t>(n, seed);  
   test_unordered_insert_and_find<uint64_t>(n, seed);  
   // test_unordered_insert_from_base_start<uint64_t>(n, seed);
