@@ -1,3 +1,6 @@
 [submodule "btree_tests/ParallelTools"]
 	path = btree_tests/ParallelTools
 	url = git@github.com:wheatman/ParallelTools.git
+[submodule "btree_tests/BwTree"]
+	path = btree_tests/BwTree
+	url = git@github.com:wangziqi2013/BwTree.git
