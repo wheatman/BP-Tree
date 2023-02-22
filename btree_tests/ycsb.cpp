@@ -12,6 +12,7 @@
 #include "tlx/container/btree_map.hpp"
 #include<cilk/cilk.h>
 #include<thread>
+#include <functional>
 
 static long get_usecs() {
   struct timeval st;
@@ -107,8 +108,52 @@ void ycsb_load_run_string(int index_type, int wl, int kt, int ap, int num_thread
     
 }
 
+struct ThreadArgs {
+    std::function<void(int, int)> func;
+    int start;
+    int end;
+};
+
+
+void* threadFunction(void* arg) {
+    ThreadArgs* args = static_cast<ThreadArgs*>(arg);
+    args->func(args->start, args->end);
+    pthread_exit(NULL);
+}
+
+
 template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
-  cilk_for(size_t i = start; i < end; i++) f(i);
+
+    const int numThreads = 48;
+    pthread_t threads[numThreads];
+    ThreadArgs threadArgs[numThreads];
+    int per_thread = (end - start)/numThreads;
+
+    // Create the threads and start executing the lambda function
+    for (int i = 0; i < numThreads; i++) {
+        threadArgs[i].func = [&f](int arg1, int arg2) {
+            for (int k = arg1 ; k < arg2; k++) {
+                f(k);
+            }
+            // std::cout << "Lambda function is called with arguments: " << arg1 << ", " << arg2 << std::endl;
+        };
+
+        threadArgs[i].start = start + (i * per_thread);
+        threadArgs[i].end = start + ((i+1) * per_thread);
+        int result = pthread_create(&threads[i], NULL, threadFunction, &threadArgs[i]);
+
+        if (result != 0) {
+            std::cerr << "Failed to create thread " << i << std::endl;
+            exit(-1);
+        }
+    }
+
+    // Wait for the threads to finish
+    for (int i = 0; i < numThreads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+//   cilk_for(size_t i = start; i < end; i++) f(i);
 }
 
 template <class T>
