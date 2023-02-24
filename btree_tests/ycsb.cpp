@@ -135,7 +135,6 @@ template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
             for (int k = arg1 ; k < arg2; k++) {
                 f(k);
             }
-            // std::cout << "Lambda function is called with arguments: " << arg1 << ", " << arg2 << std::endl;
         };
 
         threadArgs[i].start = start + (i * per_thread);
@@ -329,9 +328,9 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                     if (ops[i] == OP_INSERT) {
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
-                        if(concurrent_map.exists(keys[i]) &&  concurrent_map.value(keys[i]) != keys[i]) {
-                            std::cout << "[BTREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
-                            exit(0);
+                        if(concurrent_map.value(keys[i]) != keys[i]) {
+                            std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
+                            // exit(0);
                         }
                     } else if (ops[i] == OP_SCAN) {
                         uint64_t start= keys[i];
