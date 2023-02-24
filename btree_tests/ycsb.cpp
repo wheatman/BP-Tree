@@ -329,7 +329,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                     if (ops[i] == OP_INSERT) {
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
-                        if(!concurrent_map.exists(keys[i]) ||  concurrent_map.value(keys[i]) != keys[i]) {
+                        if( concurrent_map.value(keys[i]) != keys[i]) {
                             std::cout << "[BTREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
                             // exit(0);
                         }
