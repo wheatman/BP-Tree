@@ -2893,7 +2893,8 @@ int main(int argc, char *argv[]) {
     ("write_csv", "whether to write timings to disk")
     ("microbenchmark_baseline", "run baseline 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
     ("microbenchmark_allsize", "run all size btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
-    ("psum_baseline", "run baseline 1024 btree psum with [trials] [num_inserts]");
+    ("psum_baseline", "run baseline 1024 btree psum with [trials] [num_inserts]")
+    ("merge_iter", "run baseline 1024 btree merge with iterators with [trials] [num_inserts per tree]");
 
   std::seed_seq seed{0};
   auto result = options.parse(argc, argv);
@@ -2917,6 +2918,10 @@ int main(int argc, char *argv[]) {
 
   if (result["psum_baseline"].as<bool>()) {
     test_concurrent_sum_time<unsigned long, 1024, 1024>(num_inserts, seed, trials);
+    return 0;
+  }
+  if (result["merge_iter"].as<bool>()) {
+    test_parallel_iter_merge_map<unsigned long, 1024, 1024>(num_inserts, num_queries, seed, write_csv, trials);
     return 0;
   }
 
