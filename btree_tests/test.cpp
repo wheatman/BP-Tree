@@ -2890,6 +2890,7 @@ int main(int argc, char *argv[]) {
     ("trials", "how many values to insert", cxxopts::value<int>()->default_value( "5"))
     ("num_inserts", "number of values to insert", cxxopts::value<int>()->default_value( "100000000"))
     ("num_queries", "number of queries for query tests", cxxopts::value<int>()->default_value( "1000000"))
+    ("num_chunks", "number of chunks for merge tests", cxxopts::value<int>()->default_value( "480"))
     ("write_csv", "whether to write timings to disk")
     ("microbenchmark_baseline", "run baseline 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
     ("microbenchmark_allsize", "run all size btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
@@ -2901,6 +2902,7 @@ int main(int argc, char *argv[]) {
   uint32_t trials = result["trials"].as<int>();
   uint32_t num_inserts = result["num_inserts"].as<int>();
   uint32_t num_queries = result["num_queries"].as<int>();
+  uint32_t num_chunks = result["num_chunks"].as<int>();
   uint32_t write_csv = result["write_csv"].as<bool>();
 
   std::ofstream outfile;
@@ -2921,7 +2923,7 @@ int main(int argc, char *argv[]) {
     return 0;
   }
   if (result["merge_iter"].as<bool>()) {
-    test_parallel_iter_merge_map<unsigned long, 1024, 1024>(num_inserts, num_queries, seed, write_csv, trials);
+    test_parallel_iter_merge_map<unsigned long, 1024, 1024>(num_inserts, num_chunks, seed, write_csv, trials);
     return 0;
   }
 
