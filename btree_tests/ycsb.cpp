@@ -10,7 +10,7 @@
 // #include "tbb/tbb.h"
 #include <tlx/container/btree_set.hpp>
 #include "tlx/container/btree_map.hpp"
-#include<cilk/cilk.h>
+// #include<cilk/cilk.h>
 #include<thread>
 #include <functional>
 
@@ -139,7 +139,11 @@ template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
         };
 
         threadArgs[i].start = start + (i * per_thread);
-        threadArgs[i].end = start + ((i+1) * per_thread);
+        if (i == numThreads - 1 && (end - start) % numThreads != 0) {
+          threadArgs[i].end = end;
+        } else {
+          threadArgs[i].end = start + ((i+1) * per_thread);
+        }
         int result = pthread_create(&threads[i], NULL, threadFunction, &threadArgs[i]);
 
         if (result != 0) {

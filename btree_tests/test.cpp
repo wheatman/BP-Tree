@@ -29,6 +29,57 @@ static long get_usecs() {
   return st.tv_sec * 1000000 + st.tv_usec;
 }
 
+
+struct ThreadArgs {
+    std::function<void(int, int)> func;
+    int start;
+    int end;
+};
+
+
+void* threadFunction(void* arg) {
+    ThreadArgs* args = static_cast<ThreadArgs*>(arg);
+    args->func(args->start, args->end);
+    pthread_exit(NULL);
+}
+
+
+template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
+
+    const int numThreads = 48;
+    pthread_t threads[numThreads];
+    ThreadArgs threadArgs[numThreads];
+    int per_thread = (end - start)/numThreads;
+
+    // Create the threads and start executing the lambda function
+    for (int i = 0; i < numThreads; i++) {
+        threadArgs[i].func = [&f](int arg1, int arg2) {
+            for (int k = arg1 ; k < arg2; k++) {
+                f(k);
+            }
+        };
+
+        threadArgs[i].start = start + (i * per_thread);
+        if (i == numThreads - 1) {
+          threadArgs[i].end = end;
+        } else {
+          threadArgs[i].end = start + ((i+1) * per_thread);
+        }
+        int result = pthread_create(&threads[i], NULL, threadFunction, &threadArgs[i]);
+
+        if (result != 0) {
+            std::cerr << "Failed to create thread " << i << std::endl;
+            exit(-1);
+        }
+    }
+
+    // Wait for the threads to finish
+    for (int i = 0; i < numThreads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+}
+
 template <class T>
 std::vector<T> create_random_data(size_t n, size_t max_val,
                                   std::seed_seq &seed) {
@@ -1395,13 +1446,13 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     printf("\nRunning plain btree with internal bytes = %u, leaf bytes = %u, trial = %d\n",internal_bytes, leaf_bytes, cur_trial);
 
     std::vector<T> data =
-        create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+        create_random_data<T>(2*max_size, std::numeric_limits<T>::max(), seed);
     
     std::set<T> checker_set;
     bool wrong;
 
   #if CORRECTNESS
-    for (uint32_t i = 0; i < max_size; i++) {
+    for (uint32_t i = 0; i < 2 * max_size; i++) {
       checker_set.insert(data[i]);
     }
 
@@ -1429,10 +1480,17 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
                   std::allocator<T>, true> concurrent_map;
 
     // TIME INSERTS
-    start_time = get_usecs();
-    cilk_for(uint32_t i = 0; i < max_size; i++) {
+		parallel_for(0, max_size, [&](const uint32_t &i) {
+    // cilk_for(uint32_t i = 0; i < max_size; i++) {
       concurrent_map.insert({data[i], 2*data[i]});
-    }
+    });
+    printf("trial %d: inserted %lu\n", cur_trial, max_size);
+
+    start_time = get_usecs();
+		parallel_for(max_size, 2 * max_size, [&](const uint32_t &i) {
+    //cilk_for(uint32_t i = max_size; i < 2*max_size; i++) {
+      concurrent_map.insert({data[i], 2*data[i]});
+    });
     end_time = get_usecs();
     if (cur_trial > 0) {insert_times.push_back(end_time - start_time);}
     printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
@@ -1441,9 +1499,10 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     // TIME POINT QUERIES
     std::vector<bool> found_count(NUM_QUERIES);
     start_time = get_usecs();
-    cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
+		parallel_for(0, NUM_QUERIES, [&](const uint32_t &i) {
+    // cilk_for(uint32_t i = 0; i < NUM_QUERIES; i++) {
       found_count[i] = concurrent_map.exists(data[range_query_start_idxs[i]]);
-    }
+    });
     end_time = get_usecs();
     if (cur_trial > 0) {find_times.push_back(end_time - start_time);}
     int count_found = 0;
@@ -1463,7 +1522,8 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
       std::vector<uint64_t> correct_range_query_counts(NUM_QUERIES);
 
       // get correct range sums
-      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+			parallel_for(0, NUM_QUERIES, [&](const uint32_t &i) {
+      // cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
         T start, end;
         start = checker_sorted[range_query_start_idxs[i]];
 
@@ -1486,7 +1546,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
           // printf("range count %lu", correct_range_query_counts[i] );
           curr_index++;
         }
-      }
+      });
       printf("\t did %lu correct range queries with max query size %lu\n", 
             NUM_QUERIES,
             MAX_QUERY_SIZE);
@@ -1498,7 +1558,8 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
       std::vector<T> concurrent_range_query_length_key_sums(NUM_QUERIES);
       std::vector<T> concurrent_range_query_length_val_sums(NUM_QUERIES);
 
-      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+ 			parallel_for(0, NUM_QUERIES, [&](const uint32_t &i) {
+      // cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
         T start;
   #if CORRECTNESS
         start = checker_sorted[range_query_start_idxs[i]];
@@ -1517,10 +1578,11 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
                 });
         concurrent_range_query_length_counts[i] = num_in_range;
         concurrent_range_query_length_maxs[i] = max_key_in_range;
-      }
+      });
 
       start_time = get_usecs();
-      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+			parallel_for(0, NUM_QUERIES, [&](const uint32_t &i) {
+      //cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
         T start;
   #if CORRECTNESS
         start = checker_sorted[range_query_start_idxs[i]];
@@ -1535,7 +1597,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
                 });
         concurrent_range_query_length_key_sums[i] = sum_key_range;
         concurrent_range_query_length_val_sums[i] = sum_val_range;
-      }
+      });
       end_time = get_usecs();
       if (cur_trial > 0) {sorted_range_query_times_by_size.push_back(end_time - start_time);}
       printf("\t\t did sorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
