@@ -1662,7 +1662,8 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
 #endif
 
       start_time = get_usecs();
-      cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+			parallel_for(0, NUM_QUERIES, [&](const uint32_t &i) {
+      // cilk_for (uint32_t i = 0; i < NUM_QUERIES; i++) {
         T start, end;
   #if CORRECTNESS
         start = checker_sorted[range_query_start_idxs[i]];
@@ -1682,7 +1683,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
                 });
         concurrent_range_query_key_sums[i] = sum_key_range;
         concurrent_range_query_val_sums[i] = sum_val_range;
-      }
+      });
       end_time = get_usecs();
       if (cur_trial > 0) {unsorted_range_query_times_by_size.push_back(end_time - start_time);}
       printf("\t\t did unsorted range queries with max len %lu concurrently in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
