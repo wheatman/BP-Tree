@@ -1223,6 +1223,47 @@ test_concurrent_range_query_map(uint64_t max_size, std::seed_seq &seed) {
 
 template <class T, uint32_t internal_bytes>
 bool
+test_sequential_inserts(uint64_t max_size, int trials) {
+  printf("*** testing sequential inserts ***\n");
+  uint64_t start_time, end_time;
+  std::vector<uint64_t> insert_times;
+
+  for (int cur_trial = 0; cur_trial <= trials; cur_trial++) {
+    printf("trials %d, inserts %lu\n", cur_trial, max_size);
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+                  std::allocator<T>, true> concurrent_map;
+
+    uint32_t num_threads = 48;
+    uint32_t inserts_per_thread = max_size / num_threads;
+    // TIME INSERTS
+
+    start_time = get_usecs();
+		parallel_for(0, num_threads, [&](const uint32_t &thread_id) {
+      uint32_t num_to_insert = inserts_per_thread;
+      if (thread_id == num_threads - 1) {
+        num_to_insert += (max_size % num_threads);
+      }
+      for(uint64_t i = 0; i < num_to_insert; i++) {
+        uint64_t val_to_insert = thread_id * 1000000000 + i + 1;
+        concurrent_map.insert({val_to_insert, val_to_insert});
+      }
+    });
+    end_time = get_usecs();
+    if (cur_trial > 0) {insert_times.push_back(end_time - start_time);}
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+    
+   auto concurrent_sum = concurrent_map.psum_with_subtract();
+   printf("concurrent sum = %lu\n", concurrent_sum);
+  }
+  std::sort(insert_times.begin(), insert_times.end());
+  printf("median insert time = %lu\n", insert_times[trials / 2]);
+  return true;
+}
+
+
+
+template <class T, uint32_t internal_bytes>
+bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
   // std::vector<uint32_t> num_query_sizes{1000};
   std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
@@ -2311,6 +2352,7 @@ int main(int argc, char *argv[]) {
     ("num_chunks", "number of chunks for merge tests", cxxopts::value<int>()->default_value( "480"))
     ("write_csv", "whether to write timings to disk")
     ("microbenchmark_leafds", "run leafds 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
+    ("sequential_inserts", "run parallel inserts where each threads inserts sequential elements")
     ("psum_leafds", "run leafds 1024 byte btree psum with [trials] [num_inserts]")
     ("merge_iter", "run baseline 1024 btree merge with iterators with [trials] [num_inserts per tree]");
     
@@ -2334,7 +2376,9 @@ int main(int argc, char *argv[]) {
     bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(num_inserts, num_queries, seed, write_csv, trials);
     return !correct;
   }
-
+  if (result["sequential_inserts"].as<bool>()) {
+    return test_sequential_inserts<unsigned long, 1024>(num_inserts, trials);
+  }
   if (result["psum_leafds"].as<bool>()) {
     test_concurrent_sum_time<unsigned long, 1024>(num_inserts, seed, trials);
     return 0;
