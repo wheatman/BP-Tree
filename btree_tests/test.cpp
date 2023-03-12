@@ -1452,7 +1452,7 @@ test_sequential_inserts(uint64_t max_size, int trials) {
         num_to_insert += (max_size % num_threads);
       }
       for(uint64_t i = 0; i < num_to_insert; i++) {
-        uint64_t val_to_insert = thread_id * 1000000000 + i;
+        uint64_t val_to_insert = thread_id * 1000000000 + i + 1;
         concurrent_map.insert({val_to_insert, val_to_insert});
       }
     });
