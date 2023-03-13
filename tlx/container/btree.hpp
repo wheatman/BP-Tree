@@ -319,7 +319,7 @@ private:
         //! Double linked list pointers to traverse the leaves
         LeafNode* next_leaf;
 
-        mutable Lock mutex_;
+        mutable ReaderWriterLock mutex_;
 
         //! Array of (key, data) pairs
         value_type slotdata[leaf_slotmax]; // NOLINT
@@ -1606,14 +1606,14 @@ public:
 
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.read_lock(cpuid);
             parent_lock->read_unlock(cpuid);
         }
 
         unsigned short slot = find_lower(leaf, key);
         auto res =  (slot < leaf->slotuse && key_equal(key, leaf->key(slot)));
         if constexpr(concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock(cpuid);
         }
         return res;
     }
@@ -1655,7 +1655,7 @@ public:
         const LeafNode* old_leaf;
 
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.read_lock(cpuid);
             parent_lock->read_unlock(cpuid);
         }
         
@@ -1676,8 +1676,8 @@ public:
                 old_leaf = leaf;
                 leaf = static_cast<const LeafNode*>(leaf->next_leaf);
                 if constexpr (concurrent) {
-                    leaf->mutex_.lock();
-                    old_leaf->mutex_.unlock();
+                    leaf->mutex_.read_lock(cpuid);
+                    old_leaf->mutex_.read_unlock(cpuid);
                 }
             } else {
                 break;
@@ -1685,7 +1685,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock(cpuid);
         }
 
         return;
@@ -1728,7 +1728,7 @@ public:
         const LeafNode* old_leaf;
 
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.read_lock(cpuid);
             parent_lock->read_unlock(cpuid);
         }
         
@@ -1752,8 +1752,8 @@ public:
                 old_leaf = leaf;
                 leaf = static_cast<const LeafNode*>(leaf->next_leaf);
                 if constexpr (concurrent) {
-                    leaf->mutex_.lock();
-                    old_leaf->mutex_.unlock();
+                    leaf->mutex_.read_lock(cpuid);
+                    old_leaf->mutex_.read_unlock(cpuid);
                 }
             } else {
                 break;
@@ -1761,7 +1761,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock(cpuid);
         }
 
         return;
@@ -1794,7 +1794,7 @@ public:
       }
       const LeafNode *leaf = static_cast<const LeafNode *>(n);
       if constexpr (concurrent) {
-        leaf->mutex_.lock();
+        leaf->mutex_.read_lock(cpuid);
         parent_lock->read_unlock(cpuid);
       }
       // leaf->slotdata.print();
@@ -1802,19 +1802,19 @@ public:
       if (key_equal(key, leaf->key(slot))) {
         if constexpr (!is_pair) {
           if constexpr (concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock(cpuid);
           }
           return true;
         } else {
           auto res = leaf->slotdata[slot].second;
           if constexpr (concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock(cpuid);
           }
           return res;
         }
       }
       if constexpr (concurrent) {
-        leaf->mutex_.unlock();
+        leaf->mutex_.read_unlock(cpuid);
       }
       return {};
       /*
@@ -2440,7 +2440,7 @@ private:
             LeafNode* original_leaf = leaf;
             if constexpr (concurrent) {
                 // printf("trying to lock leaf lock from %p\n", leaf);
-                leaf->mutex_.lock();
+                leaf->mutex_.write_lock();
                 if constexpr (optimism) {
                     if (!leaf->is_full()) {
                         (*parent_lock)->read_unlock(cpu_id);
@@ -2455,7 +2455,7 @@ private:
                 slot < leaf->slotuse && key_equal(key, leaf->key(slot))) {
                 if constexpr (concurrent) {
                     // printf("unlcoked leaf lock %p\n", leaf);
-                    leaf->mutex_.unlock();
+                    leaf->mutex_.write_unlock();
                 }
                 return std::tuple<iterator, bool, bool>(iterator(leaf, slot), false, false);
             }
@@ -2465,7 +2465,7 @@ private:
                 if constexpr (concurrent) {
                     if constexpr (optimism) {
                         // printf("unlcoked leaf lock %p\n", leaf);
-                        leaf->mutex_.unlock();
+                        leaf->mutex_.write_unlock();
                         return {{},{},true};
                     }
                 }
@@ -2497,7 +2497,7 @@ private:
             }
             if constexpr (concurrent) {
                 // printf("unlocked leaf lock %p\n", leaf);
-                original_leaf->mutex_.unlock();
+                original_leaf->mutex_.write_unlock();
             }
             return std::tuple<iterator, bool, bool>(iterator(leaf, slot), true, false);
         }
@@ -2919,7 +2919,7 @@ int cpu_id) {
         {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
             if constexpr (concurrent) {
-                leaf->mutex_.lock();
+                leaf->mutex_.write_lock();
                 // if constexpr (optimism) {
                 //     (*parent_lock)->read_unlock(cpu_id);
                 //     *parent_lock = nullptr;
@@ -2933,7 +2933,7 @@ int cpu_id) {
             if (slot >= leaf->slotuse || !key_equal(key, leaf->key(slot)))
             {
                 TLX_BTREE_PRINT("Could not find key " << key << " to erase.");
-                leaf->mutex_.unlock();
+                leaf->mutex_.write_unlock();
                 return {btree_not_found, false};
             }
 
@@ -2941,11 +2941,11 @@ int cpu_id) {
             // so in optimism mode we just fail back to the top
             if constexpr (concurrent && optimism) {
                 if (slot == leaf->slotuse) {
-                    leaf->mutex_.unlock();
+                    leaf->mutex_.write_unlock();
                     return {{}, true};
                 }
                 if (leaf->soon_underflow()) {
-                    leaf->mutex_.unlock();
+                    leaf->mutex_.write_unlock();
                     return {{}, true};
                 }
             }
@@ -3006,7 +3006,7 @@ int cpu_id) {
                     TLX_BTREE_ASSERT(stats_.leaves == 0);
                     TLX_BTREE_ASSERT(stats_.inner_nodes == 0);
                     if constexpr (concurrent) {
-                        leaf->mutex_.unlock();
+                        leaf->mutex_.write_unlock();
                     }
                     return {btree_ok, false};
                 }
@@ -3065,7 +3065,7 @@ int cpu_id) {
                 }
             }
             if constexpr (concurrent) {
-                leaf->mutex_.unlock();
+                leaf->mutex_.write_unlock();
             }
             return {myres, false};
         }
@@ -3767,7 +3767,7 @@ int cpu_id) {
         // node.
 
         if (concurrent) {
-            right->mutex_.lock();
+            right->mutex_.write_lock();
         }
 
         std::copy(right->slotdata, right->slotdata + shiftnum,
@@ -3783,7 +3783,7 @@ int cpu_id) {
         right->slotuse -= shiftnum;
 
         if (concurrent) {
-            right->mutex_.unlock();
+            right->mutex_.write_unlock();
         }
         // fixup parent
         if (parentslot < parent->slotuse) {
@@ -3896,7 +3896,7 @@ int cpu_id) {
             TLX_BTREE_ASSERT(leftslot == parentslot);
         }
         if (concurrent) {
-            left->mutex_.lock();
+            left->mutex_.write_lock();
         }
 
         // shift all slots in the right node
@@ -3916,7 +3916,7 @@ int cpu_id) {
 
         left->slotuse -= shiftnum;
         if (concurrent) {
-            left->mutex_.unlock();
+            left->mutex_.write_unlock();
         }
 
         parent->slotkey[parentslot] = left->key(left->slotuse - 1);
