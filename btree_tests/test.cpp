@@ -3149,10 +3149,11 @@ int main(int argc, char *argv[]) {
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(num_inserts, num_queries, seed, write_csv, trials);
+/*
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(num_inserts, num_queries, seed, write_csv, trials);
+
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 32768, 32768>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 65536, 65536>(num_inserts, num_queries, seed, write_csv, trials);
-/*
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 2048>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 4096>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 8192>(num_inserts, num_queries, seed, write_csv, trials);
