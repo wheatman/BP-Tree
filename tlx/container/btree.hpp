@@ -319,7 +319,7 @@ private:
         //! Double linked list pointers to traverse the leaves
         LeafNode* next_leaf;
 
-        mutable ReaderWriterLock mutex_;
+        mutable ReaderWriterLock2 mutex_;
 
         //! Array of (key, data) pairs
         value_type slotdata[leaf_slotmax]; // NOLINT
