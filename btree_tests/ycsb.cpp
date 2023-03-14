@@ -113,7 +113,18 @@ struct ThreadArgs {
     int start;
     int end;
 };
-
+double findMedian(vector<double>& vec) {
+    size_t size = vec.size();
+    if (size == 0) {
+        return 0;
+    }
+    sort(vec.begin(), vec.end());
+    if (size % 2 == 0) {
+        return (vec[size / 2 - 1] + vec[size / 2]) / 2;
+    } else {
+        return vec[size / 2];
+    }
+}
 
 void* threadFunction(void* arg) {
     ThreadArgs* args = static_cast<ThreadArgs*>(arg);
@@ -138,7 +149,11 @@ template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
         };
 
         threadArgs[i].start = start + (i * per_thread);
-        threadArgs[i].end = start + ((i+1) * per_thread);
+        if (i == numThreads - 1) {
+          threadArgs[i].end = end;
+        } else {
+          threadArgs[i].end = start + ((i+1) * per_thread);
+        }
         int result = pthread_create(&threads[i], NULL, threadFunction, &threadArgs[i]);
 
         if (result != 0) {
@@ -203,26 +218,26 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         }
     } else {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
-            init_file = "../../ycsb/index-microbench/workloads/loada_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsa_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loada_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsa_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
-            init_file = "../../ycsb/index-microbench/workloads/loadb_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsb_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadb_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsb_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
-            init_file = "../../ycsb/index-microbench/workloads/loadc_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsc_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadc_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsc_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
-            init_file = "../../ycsb/index-microbench/workloads/loadd_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsd_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadd_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsd_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
-            init_file = "../../ycsb/index-microbench/workloads/loade_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnse_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loade_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnse_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_X) {
-            init_file = "../../ycsb/index-microbench/workloads/loadx_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsx_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../../ycsb/index-microbench/workloads/loady_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsy_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loady_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsy_unif_int.dat";
         }
     }
 
@@ -303,7 +318,8 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
 
     if (index_type == TYPE_BTREE) {
 
-
+        std::vector<double> load_tpts;
+        std::vector<double> run_tpts;
         for(int k =0; k<6; k++){
             std::vector<uint64_t> query_results_keys(RUN_SIZE);
             std::vector<uint64_t> query_results_vals(RUN_SIZE);
@@ -318,6 +334,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                 auto end = get_usecs();
                 auto duration = end- starttime; //std::chrono::duration_cast<std::chrono::microseconds>(
                         //std::chrono::system_clock::now() - starttime);
+                if(k!=0) load_tpts.push_back(((double)LOAD_SIZE)/duration);
                 printf("\tLoad took %lu us, throughput = %f ops/us\n", duration, ((double)LOAD_SIZE)/duration);
                 //printf("Throughput: load, %f ,ops/us and time %ld in us\n", (LOAD_SIZE * 1.0) / duration.count(), duration.count());
             }
@@ -329,7 +346,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
                         if(concurrent_map.value(keys[i]) != keys[i]) {
-                            std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
+                            // std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
                             // exit(0);
                         }
                     } else if (ops[i] == OP_SCAN) {
@@ -366,6 +383,8 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             });
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::system_clock::now() - starttime);
+            if(k!=0) load_tpts.push_back( (RUN_SIZE * 1.0) / duration.count());
+
             printf("\tRun, throughput: %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
         }
         uint64_t key_sum = 0;
@@ -376,6 +395,8 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         }
         printf("\ttotal key sum = %lu, total val sum = %lu\n\n", key_sum, val_sum);
         }
+        printf("\tMedian Load throughput: %f ,ops/us\n", findMedian(load_tpts));
+        printf("\tMedian Run throughput: %f ,ops/us\n", findMedian(run_tpts));
     }
 }
 
