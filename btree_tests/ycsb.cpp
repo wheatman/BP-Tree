@@ -236,7 +236,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
             txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loady_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
             txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsy_unif_int.dat";
         }
     }
