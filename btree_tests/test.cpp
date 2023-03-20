@@ -1365,6 +1365,201 @@ test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUER
   }
   return true;
 }
+
+template <class T, uint32_t internal_bytes>
+bool
+test_serial_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
+  // std::vector<uint32_t> num_query_sizes{1000};
+  std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
+
+  uint64_t start_time, end_time;
+  std::vector<uint64_t> insert_times;
+  std::vector<uint64_t> find_times;
+  std::vector<uint64_t> sorted_range_query_times_by_size;
+  std::vector<uint64_t> unsorted_range_query_times_by_size;
+
+  for (int cur_trial = 0; cur_trial < trials; cur_trial++) {
+    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu , trial = %lu\n",internal_bytes, SLOTS, cur_trial);
+
+    std::vector<T> data =
+        create_random_data<T>(2*max_size, std::numeric_limits<T>::max(), seed);
+    
+    std::set<T> checker_set;
+    bool wrong;
+
+    std::seed_seq query_seed{1};
+    std::seed_seq query_seed_2{2};
+
+    std::vector<uint64_t> range_query_start_idxs =
+        create_random_data<uint64_t>(NUM_QUERIES, data.size() - 1, query_seed);
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+                  std::allocator<T>, false> serial_map;
+
+    // TIME INSERTS
+    for(uint32_t i = 0; i < max_size; i++) {
+      serial_map.insert({data[i], 2*data[i]});
+    }
+    printf("trial %d: inserted %lu\n", cur_trial, max_size);
+
+    start_time = get_usecs();
+    for(uint32_t i = max_size; i < 2*max_size; i++) {
+      serial_map.insert({data[i], 2*data[i]});
+    }
+    end_time = get_usecs();
+    insert_times.push_back(end_time - start_time);
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end_time - start_time);
+    
+    // TIME POINT QUERIES
+    std::vector<bool> found_count(NUM_QUERIES);
+    start_time = get_usecs();
+    for(uint32_t i = 0; i < NUM_QUERIES; i++) {
+      found_count[i] = serial_map.exists(data[range_query_start_idxs[i]]);
+    }
+    end_time = get_usecs();
+    find_times.push_back(end_time - start_time);
+    int count_found = 0;
+    for (auto e : found_count) {
+      count_found += e ? 1 : 0;
+    }
+    printf("\tDone finding %lu elts in %lu, count = %d \n",NUM_QUERIES, end_time - start_time, count_found);
+
+    // TIME RANGE QUERIES FOR ALL LENGTHS
+    for (size_t query_size_i = 0; query_size_i < num_query_sizes.size(); query_size_i++) {
+      uint64_t MAX_QUERY_SIZE = num_query_sizes[query_size_i];
+      std::vector<uint64_t> range_query_lengths =
+        create_random_data<uint64_t>(NUM_QUERIES, MAX_QUERY_SIZE - 1, query_seed_2);
+
+      // sorted query first to get end key
+      std::vector<T> concurrent_range_query_length_maxs(NUM_QUERIES);
+      std::vector<uint64_t> concurrent_range_query_length_counts(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_length_key_sums(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_length_val_sums(NUM_QUERIES);
+
+      for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start;
+        start = data[range_query_start_idxs[i]];
+
+        uint64_t num_in_range = 0;
+        T max_key_in_range = start;
+
+        serial_map.map_range_length(start, range_query_lengths[i], [&max_key_in_range]([[maybe_unused]] auto key, auto val) {
+                  if (key > max_key_in_range) {
+                    max_key_in_range = key;
+                  }
+                });
+        serial_map.map_range_length(start, range_query_lengths[i], [&num_in_range]([[maybe_unused]] auto key, auto val) {
+                  num_in_range++;
+                });
+        concurrent_range_query_length_counts[i] = num_in_range;
+        concurrent_range_query_length_maxs[i] = max_key_in_range;
+      }
+
+      start_time = get_usecs();
+      for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start;
+        start = data[range_query_start_idxs[i]];
+        T sum_key_range = 0;
+        T sum_val_range = 0;
+        serial_map.map_range_length(start, range_query_lengths[i], [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                  sum_key_range += key;
+                  sum_val_range += val;
+                });
+        concurrent_range_query_length_key_sums[i] = sum_key_range;
+        concurrent_range_query_length_val_sums[i] = sum_val_range;
+      }
+      end_time = get_usecs();
+      sorted_range_query_times_by_size.push_back(end_time - start_time);
+      printf("\t\t did sorted range queries with max len %lu serially in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+      T sum_all_keys = 0;
+      for (auto e: concurrent_range_query_length_key_sums) {
+        sum_all_keys += e;
+      }
+      T sum_all_vals = 0;
+      for (auto e: concurrent_range_query_length_val_sums) {
+        sum_all_vals += e;
+      }
+      if (sum_all_keys * 2 != sum_all_vals) {
+        printf("\t\t\t wrong, sum keys * 2 %lu not equal to sum vals %lu\n", sum_all_keys, sum_all_vals);
+        // return false;
+      }
+      printf("\t\t\t sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
+      std::vector<T> concurrent_range_query_key_sums(NUM_QUERIES);
+      std::vector<T> concurrent_range_query_val_sums(NUM_QUERIES);
+
+      start_time = get_usecs();
+      for (uint32_t i = 0; i < NUM_QUERIES; i++) {
+        T start, end;
+
+        start = data[range_query_start_idxs[i]];
+        end = concurrent_range_query_length_maxs[i];
+        if (range_query_lengths[i] != 0) {
+          end++;
+        }
+
+        T sum_key_range = 0;
+        T sum_val_range = 0;
+        serial_map.map_range(start, end, [&sum_key_range, &sum_val_range]([[maybe_unused]] auto key, auto val) {
+                  sum_key_range += key;
+                  sum_val_range += val;
+                });
+        concurrent_range_query_key_sums[i] = sum_key_range;
+        concurrent_range_query_val_sums[i] = sum_val_range;
+      }
+      end_time = get_usecs();
+      unsorted_range_query_times_by_size.push_back(end_time - start_time);
+      printf("\t\t did unsorted range queries with max len %lu serially in %lu\n", MAX_QUERY_SIZE, end_time - start_time);
+      sum_all_keys = 0;
+      for (auto e: concurrent_range_query_key_sums) {
+        sum_all_keys += e;
+      }
+      sum_all_vals = 0;
+      for (auto e: concurrent_range_query_val_sums) {
+        sum_all_vals += e;
+      }
+      if (sum_all_keys * 2 != sum_all_vals) {
+        printf("\t\t\t wrong, sum keys * 2 not equal to sum vals\n");
+        // return false;
+      }
+    }
+  }
+
+  // DONE WITH TESTS FOR THIS SIZE
+  if (!write_csv) { 
+    printf("correct\n");
+  } else {
+    // printf("tree_type, internal bytes, leaf bytes, num_inserted, insert_time, num_finds, find_time, \n");
+    // tree_type, internal bytes, leaf bytes, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time
+    std::ofstream outfile;
+    uint64_t insert_time_med, find_time_med;
+    std::sort(insert_times.begin(), insert_times.end());
+    std::sort(find_times.begin(), find_times.end());
+    insert_time_med = insert_times[trials/2];
+    find_time_med = find_times[trials/2];
+
+    outfile.open("insert_finds.csv", std::ios_base::app); 
+    outfile << "leafds, " << internal_bytes << ", " << SLOTS << ", " <<  max_size << ", " <<  insert_time_med << ", " <<  NUM_QUERIES << ", " <<  find_time_med << ", \n";
+    outfile.close();
+    outfile.open("range_queries.csv", std::ios_base::app); 
+    printf("num sorted trials %lu, num unsorted trials %lu\n", sorted_range_query_times_by_size.size(), unsorted_range_query_times_by_size.size());
+    for (size_t i = 0; i < num_query_sizes.size(); i++) {
+      std::vector<uint64_t> curr_unsorted_query_times;
+      std::vector<uint64_t> curr_sorted_query_times;
+      for (int t = 0; t < trials; t++) {
+        curr_unsorted_query_times.push_back(unsorted_range_query_times_by_size[t*num_query_sizes.size() + i]);
+        curr_sorted_query_times.push_back(sorted_range_query_times_by_size[t*num_query_sizes.size() + i]);
+      }
+      std::sort(curr_unsorted_query_times.begin(), curr_unsorted_query_times.end());
+      std::sort(curr_sorted_query_times.begin(), curr_sorted_query_times.end());
+      outfile << "leafds, " << internal_bytes << ", " << SLOTS << ", " <<  max_size << ", " <<  NUM_QUERIES << ", " <<  num_query_sizes[i] << ", " <<  curr_unsorted_query_times[trials/2] << ", " <<  curr_sorted_query_times[trials/2] << ", \n";
+    }
+    outfile.close();
+  }
+  return true;
+}
+
+
+
+
  
 template <class T, uint32_t internal_bytes>
 bool
@@ -2464,6 +2659,7 @@ int main(int argc, char *argv[]) {
     ("query_size", "query size for cache test", cxxopts::value<int>()->default_value( "10000"))
     ("num_chunks", "number of chunks for merge tests", cxxopts::value<int>()->default_value( "480"))
     ("write_csv", "whether to write timings to disk")
+    ("serial_microbenchmark_leafds", "run leafds 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
     ("microbenchmark_leafds", "run leafds 1024 byte btree microbenchmark with [trials] [num_inserts] [num_queries] [write_csv]")
     ("sequential_inserts", "run parallel inserts where each threads inserts sequential elements")
     ("psum_leafds", "run leafds 1024 byte btree psum with [trials] [num_inserts]")
@@ -2486,6 +2682,11 @@ int main(int argc, char *argv[]) {
   outfile.open("range_queries.csv", std::ios_base::app); 
   outfile << "tree_type, internal bytes, leaf slots, num_inserted,num_range_queries, max_query_size,  unsorted_query_time, sorted_query_time, \n";
   outfile.close();
+
+  if (result["serial_microbenchmark_leafds"].as<bool>()) {
+    bool correct = test_serial_microbenchmarks_map<unsigned long, 1024>(num_inserts, num_queries, seed, write_csv, trials);
+    return !correct;
+  }
 
   if (result["microbenchmark_leafds"].as<bool>()) {
     bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(num_inserts, num_queries, seed, write_csv, trials);
