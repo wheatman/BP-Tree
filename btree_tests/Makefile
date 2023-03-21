@@ -10,7 +10,7 @@ CORRECTNESS?=0
 ENABLE_TRACE_TIMER?=0
 
 
-CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../ -gdwarf-4
+CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-plain -gdwarf-4
 
 ifeq ($(SANITIZE),1)
 ifeq ($(CILK),1)
