@@ -337,7 +337,7 @@ private:
         //! Double linked list pointers to traverse the leaves
         LeafNode* next_leaf;
 
-        mutable Lock mutex_;
+        mutable ReaderWriterLock2 mutex_;
 
         //! Array of (key, data) pairs
 				leafDS_type slotdata;
@@ -505,9 +505,9 @@ public:
         iterator(typename BTree::LeafNode* l)
             : curr_leaf(l)
         { 
-            l->mutex_.lock();
+            l->mutex_.write_lock();
             leafds_iterator = l->slotdata.begin();
-            l->mutex_.unlock();
+            l->mutex_.write_unlock();
         }
 
         iterator(typename BTree::LeafNode* l, typename leafDS_type::iterator leaf_iter)
@@ -550,9 +550,9 @@ public:
             ++leafds_iterator;
             if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf != nullptr) {
                 curr_leaf = curr_leaf->next_leaf;
-                curr_leaf->mutex_.lock();
+                curr_leaf->mutex_.write_lock();
                 leafds_iterator = curr_leaf->slotdata.begin();
-                curr_leaf->mutex_.unlock();
+                curr_leaf->mutex_.write_unlock();
             }
             else if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf == nullptr) {
                 // this is end()
@@ -569,9 +569,9 @@ public:
             ++leafds_iterator;
             if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf != nullptr) {
                 curr_leaf = curr_leaf->next_leaf;
-                curr_leaf->mutex_.lock();
+                curr_leaf->mutex_.write_lock();
                 leafds_iterator = curr_leaf->slotdata.begin();
-                curr_leaf->mutex_.unlock();
+                curr_leaf->mutex_.write_unlock();
             }
             else if (leafds_iterator == curr_leaf->slotdata.end() && curr_leaf->next_leaf == nullptr) {
                 // this is end()
@@ -1688,14 +1688,14 @@ public:
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
 
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.read_lock();
             parent_lock->read_unlock(cpuid);
         }
 
 	// leaf->slotdata.print();
 	auto res = leaf->slotdata.has(key);
 	if constexpr(concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock();
         }
 	return res;
 	/*
@@ -1739,7 +1739,7 @@ public:
         LeafNode* old_leaf_nonconst;
 
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.write_lock();
             parent_lock->read_unlock(cpuid);
         }
 
@@ -1753,8 +1753,8 @@ public:
                 old_leaf_nonconst = leaf_nonconst;
                 leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf_nonconst->mutex_.lock();
-                    old_leaf_nonconst->mutex_.unlock();
+                    leaf_nonconst->mutex_.write_lock();
+                    old_leaf_nonconst->mutex_.write_unlock();
                 }
             } else {
                 break;
@@ -1762,7 +1762,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf_nonconst->mutex_.unlock();
+            leaf_nonconst->mutex_.write_unlock();
         }
 
         return;
@@ -1803,7 +1803,7 @@ public:
         LeafNode* old_leaf_nonconst;
 
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.write_lock();
             parent_lock->read_unlock(cpuid);
         }
 
@@ -1817,8 +1817,8 @@ public:
                 old_leaf_nonconst = leaf_nonconst;
                 leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf_nonconst->mutex_.lock();
-                    old_leaf_nonconst->mutex_.unlock();
+                    leaf_nonconst->mutex_.write_lock();
+                    old_leaf_nonconst->mutex_.write_unlock();
                 }
             } else {
                 break;
@@ -1826,7 +1826,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf_nonconst->mutex_.unlock();
+            leaf_nonconst->mutex_.write_unlock();
         }
 
         return;
@@ -1868,7 +1868,7 @@ public:
         LeafNode* old_leaf_nonconst;
 
         if constexpr(concurrent) {
-            leaf_nonconst->mutex_.lock();
+            leaf_nonconst->mutex_.write_lock();
             parent_lock->read_unlock(cpuid);
         }
         
@@ -1882,8 +1882,8 @@ public:
                 old_leaf_nonconst = leaf_nonconst;
                 leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf_nonconst->mutex_.lock();
-                    old_leaf_nonconst->mutex_.unlock();
+                    leaf_nonconst->mutex_.write_lock();
+                    old_leaf_nonconst->mutex_.write_unlock();
                 }
             } else {
                 break;
@@ -1891,7 +1891,7 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf_nonconst->mutex_.unlock();
+            leaf_nonconst->mutex_.write_unlock();
         }
         
         return;
@@ -1929,14 +1929,14 @@ public:
         const LeafNode* leaf = static_cast<const LeafNode*>(n);
 
         if constexpr(concurrent) {
-            leaf->mutex_.lock();
+            leaf->mutex_.read_lock();
             parent_lock->read_unlock(cpuid);
         }
 
 	// leaf->slotdata.print();
 	auto res = leaf->slotdata.value(key);
 	if constexpr(concurrent) {
-            leaf->mutex_.unlock();
+            leaf->mutex_.read_unlock();
         }
 	return res;
 	/*
@@ -2090,9 +2090,9 @@ public:
 
         // unsigned short slot = find_lower(leaf, key);
         // return iterator(leaf, slot);
-        leaf->mutex_.lock();
+        leaf->mutex_.write_lock();
         auto leaf_iter = leaf->slotdata.lower_bound(key);
-        leaf->mutex_.unlock();
+        leaf->mutex_.write_unlock();
         return iterator(leaf, leaf_iter);
     }
 
@@ -2605,7 +2605,7 @@ private:
             LeafNode* original_leaf = leaf;
             if constexpr (concurrent) {
                 // printf("trying to lock leaf lock from %p\n", leaf);
-                leaf->mutex_.lock();
+                leaf->mutex_.write_lock();
                 if constexpr (optimism) {
                     if (!leaf->is_full()) {
                         (*parent_lock)->read_unlock(cpu_id);
@@ -2620,7 +2620,7 @@ private:
                 // slot < leaf->slotuse && key_equal(key, leaf->key(slot))) {
                 if constexpr (concurrent) {
                     // printf("unlcoked leaf lock %p\n", leaf);
-                    leaf->mutex_.unlock();
+                    leaf->mutex_.write_unlock();
                 }
 								// iterator has no meaning in leafDS + btree
                 return std::tuple<iterator, bool, bool>({}, false, false);
@@ -2631,7 +2631,7 @@ private:
                 if constexpr (concurrent) {
                     if constexpr (optimism) {
                         // printf("unlcoked leaf lock %p\n", leaf);
-                        leaf->mutex_.unlock();
+                        leaf->mutex_.write_unlock();
                         return {{},{},true};
                     }
                 }
@@ -2667,7 +2667,7 @@ private:
             }
             if constexpr (concurrent) {
                 // printf("unlocked leaf lock %p\n", leaf);
-                original_leaf->mutex_.unlock();
+                original_leaf->mutex_.write_unlock();
             }
             return std::tuple<iterator, bool, bool>({}, true, false);
         }
@@ -3125,7 +3125,7 @@ private:
         {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
             if constexpr (concurrent) {
-                leaf->mutex_.lock();
+                leaf->mutex_.write_lock();
                 // if constexpr (optimism) {
                 //     (*parent_lock)->read_unlock(cpu_id);
                 //     *parent_lock = nullptr;
@@ -3139,7 +3139,7 @@ private:
             if (!leaf->slotdata.has(key))
             {
                 TLX_BTREE_PRINT("Could not find key " << key << " to erase.");
-                leaf->mutex_.unlock();
+                leaf->mutex_.write_unlock();
                 return {btree_not_found, false};
             }
 
@@ -3160,11 +3160,11 @@ private:
             if constexpr (concurrent && optimism) {
                 // need to check if key is largest val in leaf
                 if (key_equal_check) {
-                    leaf->mutex_.unlock();
+                    leaf->mutex_.write_unlock();
                     return {{}, true};
                 }
                 if (about_to_underflow) {
-                    leaf->mutex_.unlock();
+                    leaf->mutex_.write_unlock();
                     return {{}, true};
                 }
             }
@@ -3240,7 +3240,7 @@ private:
                     TLX_BTREE_ASSERT(stats_.inner_nodes == 0);
 
                     if constexpr (concurrent) {
-                        leaf->mutex_.unlock();
+                        leaf->mutex_.write_unlock();
                     }
                     return {btree_ok, false};
                 }
@@ -3315,7 +3315,7 @@ private:
             }
 
             if constexpr (concurrent) {
-                leaf->mutex_.unlock();
+                leaf->mutex_.write_unlock();
             }
             return {myres, false};
         }
