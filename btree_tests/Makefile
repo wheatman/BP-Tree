@@ -7,10 +7,13 @@ DEBUG?=0
 CILK?=0
 SANITIZE?=0
 CORRECTNESS?=0
-ENABLE_TRACE_TIMER?=0
+LEAFDS?=0
 
-
+ifeq ($(LEAFDS),1)
+CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -IleafDS/ -I../tlx-leafds -gdwarf-4
+else
 CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-plain -gdwarf-4
+endif
 
 ifeq ($(SANITIZE),1)
 ifeq ($(CILK),1)
@@ -28,7 +31,11 @@ ifeq ($(VALGRIND),0)
 CFLAGS += -march=native
 endif
 
-DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DCORRECTNESS=$(CORRECTNESS) -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER)
+ifeq ($(LEAFDS),1)
+DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DLEAFDS=$(LEAFDS) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DVALGRIND=$(VALGRIND) -DAVX512=$(AVX512) -DCORRECTNESS=$(CORRECTNESS)
+else
+DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DLEAFDS=$(LEAFDS) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DCORRECTNESS=$(CORRECTNESS) -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER)
+endif
 
 ifeq ($(CILK),1)
 CFLAGS += -fopencilk -DPARLAY_CILK
@@ -55,3 +62,6 @@ basic: test.cpp
 
 ycsb: ycsb.cpp
 	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ ycsb.cpp
+
+clean:
+	rm -f *.o opt profile basic code.profdata default.profraw

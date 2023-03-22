@@ -198,26 +198,26 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
 
     if (ap == UNIFORM) {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loada_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsa_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loada_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnsa_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadb_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsb_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loadb_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnsb_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadc_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsc_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loadc_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnsc_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadd_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsd_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loadd_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnsd_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loade_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnse_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loade_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnse_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_X) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsx_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loadx_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loady_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsy_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/loady_unif_int.dat";
+            txn_file = "../../ycsb/index-microbench/workloads/txnsy_unif_int.dat";
         }
     } else {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
@@ -239,7 +239,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
             txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loady_unif_int.dat";
+            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
             txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsy_unif_int.dat";
         }
     }
@@ -349,12 +349,22 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
                         if( concurrent_map.value(keys[i]) != keys[i]) {
+#if LEAFDS
+                            std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
+#else
                             std::cout << "[BTREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
+#endif
                             // exit(0);
                         }
                     } else if (ops[i] == OP_SCAN) {
                         uint64_t start= keys[i];
 			            uint64_t key_sum = 0, val_sum = 0;
+#if LEAFDS
+                        concurrent_map.map_range_length(keys[i], ranges[i], [&key_sum, &val_sum]([[maybe_unused]] auto key, auto val) {
+                            key_sum += key;
+                            val_sum += val;
+                        });
+#else
                         // uint64_t max_key = 0;
                         concurrent_map.map_range_length(keys[i], ranges[i], [&key_sum, &val_sum]([[maybe_unused]] auto el) {
                             key_sum += el.first;
@@ -364,18 +374,22 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
 
                         // printf("\nSCANEND %lu %lu",keys[i],max_key);
 
-                        // concurrent_map.map_range_length(keys[i], ranges[i], [&key_sum, &val_sum](auto key, auto value) {
-                        //     key_sum += key;
-                        //     val_sum += value;
-                        // });
+#endif
 
                         query_results_keys[i] = key_sum;
                         query_results_vals[i] = val_sum;
                     } else if (ops[i] == OP_SCAN_END) {
 			            uint64_t key_sum = 0, val_sum = 0;
+#if LEAFDS
+                        concurrent_map.map_range(keys[i], range_end[i], [&key_sum, &val_sum]([[maybe_unused]] auto key, auto val) {
+                            key_sum += key;
+                            val_sum += val;
+
+#else
                         concurrent_map.map_range(keys[i], range_end[i], [&key_sum, &val_sum]([[maybe_unused]] auto el) {
                             key_sum += el.first;
                             val_sum += el.second;
+#endif
                         });
                         // concurrent_map.map_range(keys[i], range_end[i], [&key_sum, &val_sum](auto key, auto value) {
                         //     key_sum += key;
