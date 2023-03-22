@@ -26,14 +26,14 @@ export CXX=[path to compiler]
 Microbenchmarks: 
 ```
 cd btree_tests
-make CILK=1 DEBUG=0 basic
+make CILK=1 DEBUG=0 LEAFDS=0 basic
 ./basic [number of elements to insert] [number of queries]
 ```
 
 YCSB:
 ```
 cd btree_tests
-make CILK=1 DEBUG=0 ycsb
+make CILK=1 DEBUG=0 LEAFDS=0 ycsb
 ./ycsb [index type] [ycsb workload type] [key distribution] [access pattern] [number of threads]
 ```
 
