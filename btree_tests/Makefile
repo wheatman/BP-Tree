@@ -56,9 +56,15 @@ endif
 
 
 all: basic
- 
-basic: test.cpp
-	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ test.cpp
+
+ifeq ($(LEAFDS),1)
+basic: test-leafds.cpp
+	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ test-leafds.cpp
+else
+$(info    VAR is $(LEAFDS))
+basic: test-plain.cpp
+	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ test-plain.cpp
+endif
 
 ycsb: ycsb.cpp
 	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ ycsb.cpp
