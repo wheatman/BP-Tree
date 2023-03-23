@@ -22,7 +22,7 @@ git submodule init ./btree_tests/*
 git submodule update ./btree_tests/*
 export CXX=[path to compiler]
 ``` 
-
+You can set the `LEAFDS` flag to `0` to utilize the Plain BTree or set it to `1` to utilize the LeafDS data structures.
 Microbenchmarks: 
 ```
 cd btree_tests
