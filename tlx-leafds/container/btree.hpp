@@ -39,7 +39,7 @@
 #define HEADER_SIZE 32
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
-#define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
+// #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
 #define PSUM_HEIGHT_CUTOFF 2
 namespace tlx {
 
@@ -88,8 +88,12 @@ namespace tlx {
  * Generates default traits for a B+ tree used as a set or map. It estimates
  * leaf and inner node sizes by assuming a cache line multiple of 256 bytes.
 */
-template <typename Key, typename Value, uint32_t internal_bytes = INNER_BYTES>
+template <typename Key, typename Value, uint32_t internal_bytes = INNER_BYTES, uint32_t hs = HEADER_SIZE, uint32_t ls=LOG_SIZE, uint32_t bs = BLOCK_SIZE>
 struct btree_default_traits {
+    static const uint32_t log_size = ls;
+    static const uint32_t header_size = hs;
+    static const uint32_t block_size = bs;
+
     //! If true, the tree will self verify its invariants after each insert() or
     //! erase(). The header must have been compiled with TLX_BTREE_DEBUG
     //! defined.
@@ -103,7 +107,7 @@ struct btree_default_traits {
 
     //! Number of slots in each leaf of the tree. Estimated so that each node
     //! has a size of about 256 bytes.
-    static const int leaf_slots = SLOTS;
+    static const int leaf_slots = (log_size + header_size + block_size * header_size);
 	
         // TLX_BTREE_MAX(8, 1024 / (sizeof(Value)));
 
@@ -221,7 +225,7 @@ public:
     //! \{
 
     //! Base B+ tree parameter: The number of key/data slots in each leaf
-    static const unsigned short leaf_slotmax = traits::leaf_slots - 3 * LOG_SIZE; // traits::leaf_slots * (9.0 / 10.0);
+    static const unsigned short leaf_slotmax = traits::leaf_slots - 3 * traits::log_size; // traits::leaf_slots * (9.0 / 10.0);
 
     //! Base B+ tree parameter: The number of key slots in each inner node,
     //! this can differ from slots in each leaf.
@@ -326,7 +330,7 @@ private:
     struct LeafNode : public node {
 
 
-				using leafDS_type = typename std::conditional<is_pair, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type, typename pair_check<value_type>::rest>, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type>>::type;
+		using leafDS_type = typename std::conditional<is_pair, LeafDS<traits::log_size, traits::header_size, traits::block_size, key_type, typename pair_check<value_type>::rest>, LeafDS<traits::log_size, traits::header_size, traits::block_size, key_type>>::type;
         
 				//! Define an related allocator for the LeafNode structs.
         typedef typename std::allocator_traits<Allocator>::template rebind_alloc<LeafNode> alloc_type;
@@ -467,7 +471,7 @@ public:
 
         //! Current key/data slot referenced
         // unsigned short curr_slot;
-        using leafDS_type = typename std::conditional<is_pair, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type, typename pair_check<value_type>::rest>, LeafDS<LOG_SIZE, HEADER_SIZE, BLOCK_SIZE, key_type>>::type;
+        using leafDS_type = typename std::conditional<is_pair, LeafDS<traits::log_size, traits::header_size, traits::block_size, key_type, typename pair_check<value_type>::rest>, LeafDS<traits::log_size, traits::header_size, traits::block_size, key_type>>::type;
         typename leafDS_type::iterator leafds_iterator;
         
 
