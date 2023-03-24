@@ -34,7 +34,10 @@ YCSB:
 ```
 cd btree_tests
 make CILK=1 DEBUG=0 LEAFDS=0 ycsb
-./ycsb [index type] [ycsb workload type] [key distribution] [access pattern] [number of threads]
+./ycsb art a randint uniform 48
+Usage: ./ycsb btree [ycsb workload type] randint [access pattern] 48
+       1. ycsb workload type: a, b, c, e, x, y
+       2. access pattern: uniform, zipfian
 ```
 
 ## tlx - Collection of C++ Data Structures, Algorithms, and Miscellaneous Helpers
