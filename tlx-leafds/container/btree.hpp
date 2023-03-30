@@ -1870,24 +1870,51 @@ public:
 
         LeafNode* leaf_nonconst = const_cast<LeafNode*>(leaf);
         LeafNode* old_leaf_nonconst;
+        bool has_write_lock = false;
+        if constexpr(concurrent) {
+          leaf_nonconst->mutex_.read_lock();
 
+          if (leaf_nonconst->slotdata.need_write_lock(start, length)) {
+            leaf_nonconst->mutex_.read_unlock();
+            leaf_nonconst->mutex_.write_lock();
+            has_write_lock = true;
+          } 
+        }
+/*
         if constexpr(concurrent) {
             leaf_nonconst->mutex_.write_lock();
             parent_lock->read_unlock(cpuid);
         }
-        
+*/      
         uint64_t count = 0;
 
         while (true) {
             // get first key greater or equal to start
-            count += leaf_nonconst->slotdata.sorted_range(start, length - count, f);
+            
+            if (has_write_lock || !concurrent) {
+              count += leaf_nonconst->slotdata.sorted_range(start, length - count, f);
+            } else {
+              count += leaf_nonconst->slotdata.sorted_range_no_write(start, length - count, f);
+            }
 
             if (count < length && leaf_nonconst->next_leaf != nullptr) {
                 old_leaf_nonconst = leaf_nonconst;
                 leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf_nonconst->mutex_.write_lock();
-                    old_leaf_nonconst->mutex_.write_unlock();
+                    bool old_has_write_lock = has_write_lock;
+                    leaf_nonconst->mutex_.read_lock();
+                    has_write_lock = false;
+                    // upgrade to write lock if you need it
+                    if (leaf_nonconst->slotdata.need_write_lock(start, length - count)) {
+                      leaf_nonconst->mutex_.read_unlock();
+                      leaf_nonconst->mutex_.write_lock();
+                      has_write_lock = true;
+                    }
+                    if (old_has_write_lock) {
+                      old_leaf_nonconst->mutex_.write_unlock();
+                    } else {
+                      old_leaf_nonconst->mutex_.read_unlock();
+                    }
                 }
             } else {
                 break;
@@ -1895,7 +1922,11 @@ public:
         }
 
         if constexpr (concurrent) {
+          if (has_write_lock) {
             leaf_nonconst->mutex_.write_unlock();
+          } else {
+            leaf_nonconst->mutex_.read_unlock();
+          }
         }
         
         return;

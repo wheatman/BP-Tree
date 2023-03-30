@@ -1265,7 +1265,7 @@ bool
 test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUERY_SIZE, std::seed_seq &seed, int trials) {
   printf("num trials = %d\n", trials);
   for (int cur_trial = 0; cur_trial <= trials; cur_trial++) {
-    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu , trial = %lu, total trials %d\n",internal_bytes, SLOTS, cur_trial, trials);
+    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %d, trial = %d, total trials %d\n",internal_bytes, SLOTS, cur_trial, trials);
     printf("inserting %lu elts, num queries = %lu, max query size = %u\n", max_size * 2, NUM_QUERIES, MAX_QUERY_SIZE);
 
     std::vector<T> data =
@@ -1379,7 +1379,7 @@ test_serial_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::se
   std::vector<uint64_t> unsorted_range_query_times_by_size;
 
   for (int cur_trial = 0; cur_trial < trials; cur_trial++) {
-    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu , trial = %lu\n",internal_bytes, SLOTS, cur_trial);
+    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %d, trial = %d\n",internal_bytes, SLOTS, cur_trial);
 
     std::vector<T> data =
         create_random_data<T>(2*max_size, std::numeric_limits<T>::max(), seed);
@@ -1574,7 +1574,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
   std::vector<uint64_t> unsorted_range_query_times_by_size;
 
   for (int cur_trial = 0; cur_trial <= trials; cur_trial++) {
-    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu , trial = %lu\n",internal_bytes, SLOTS, cur_trial);
+    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %d, trial = %d\n",internal_bytes, SLOTS, cur_trial);
 
     // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
@@ -2198,8 +2198,8 @@ test_iterator_merge_range_version_map(uint64_t max_size, std::seed_seq &seed, bo
   std::sort(elts_sorted_merged.begin(), elts_sorted_merged.end());
 #endif
 
-  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
-          std::allocator<T>, true> btree_type;
+  // typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+  //         std::allocator<T>, true> btree_type;
 
   for(int trial = 0; trial < num_trials; trial++) {
       tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
@@ -2254,7 +2254,7 @@ test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, s
   uint64_t num_chunks = 48 * num_chunk_multiplier;
   uint64_t chunk_size = std::numeric_limits<T>::max() / num_chunks;
 
-  printf("\nRunning leafds btree with internal bytes = %u with leafds slots %lu\n",internal_bytes, SLOTS);
+  printf("\nRunning leafds btree with internal bytes = %u with leafds slots %d\n",internal_bytes, SLOTS);
 
   std::vector<T> data =
       create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
@@ -2309,8 +2309,8 @@ test_parallel_iter_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, s
   printf("\tDone inserting %lu elts for correctness %lu\n",max_size);
 #endif
 
-  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
-          std::allocator<T>, true> btree_type;
+  // typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+  //        std::allocator<T>, true> btree_type;
 
   for(int trial = 0; trial <= num_trials; trial++) {
     // tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
@@ -2459,8 +2459,8 @@ test_parallel_merge_map(uint64_t max_size, uint64_t num_chunk_multiplier, std::s
   std::sort(elts_sorted_merged.begin(), elts_sorted_merged.end());
 #endif
 
-  typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
-          std::allocator<T>, true> btree_type;
+  // typedef tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+  //         std::allocator<T>, true> btree_type;
 
   for(int trial = 0; trial <= num_trials; trial++) {
     // tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
