@@ -1879,13 +1879,10 @@ public:
             leaf_nonconst->mutex_.write_lock();
             has_write_lock = true;
           } 
+
+          parent_lock->read_unlock(cpuid);
         }
-/*
-        if constexpr(concurrent) {
-            leaf_nonconst->mutex_.write_lock();
-            parent_lock->read_unlock(cpuid);
-        }
-*/      
+
         uint64_t count = 0;
 
         while (true) {
