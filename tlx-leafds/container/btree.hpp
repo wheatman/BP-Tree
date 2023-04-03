@@ -1743,7 +1743,8 @@ public:
         LeafNode* old_leaf_nonconst;
 
         if constexpr(concurrent) {
-            leaf->mutex_.write_lock();
+            leaf_nonconst->mutex_.read_lock();
+            // leaf->mutex_.write_lock();
             parent_lock->read_unlock(cpuid);
         }
 
@@ -1757,8 +1758,10 @@ public:
                 old_leaf_nonconst = leaf_nonconst;
                 leaf_nonconst = static_cast<LeafNode*>(leaf_nonconst->next_leaf);
                 if constexpr (concurrent) {
-                    leaf_nonconst->mutex_.write_lock();
-                    old_leaf_nonconst->mutex_.write_unlock();
+                    // leaf_nonconst->mutex_.write_lock();
+                    // old_leaf_nonconst->mutex_.write_unlock();
+                    leaf_nonconst->mutex_.read_lock();
+                    old_leaf_nonconst->mutex_.read_unlock();
                 }
             } else {
                 break;
@@ -1766,7 +1769,8 @@ public:
         }
 
         if constexpr (concurrent) {
-            leaf_nonconst->mutex_.write_unlock();
+            // leaf_nonconst->mutex_.write_unlock();
+            leaf_nonconst->mutex_.read_unlock();
         }
 
         return;

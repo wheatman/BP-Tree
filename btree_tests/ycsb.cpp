@@ -257,7 +257,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
     std::string scan("SCAN");
     std::string scanend("SCANEND");
 
-    int count = 0;
+    uint64_t count = 0;
     while ((count < LOAD_SIZE) && infile_load.good()) {
         infile_load >> op >> key;
         if (op.compare(insert) != 0) {
@@ -346,19 +346,21 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             auto starttime = std::chrono::system_clock::now();
             parallel_for(0, RUN_SIZE, [&](const uint64_t &i) {
                     if (ops[i] == OP_INSERT) {
+                        // printf("insert key %lu\n", keys[i]);
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
                         if( concurrent_map.value(keys[i]) != keys[i]) {
 #if LEAFDS
-                            std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
+                            // std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
 #else
-                            std::cout << "[BTREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
+                            // std::cout << "[BTREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
 #endif
                             // exit(0);
                         }
                     } else if (ops[i] == OP_SCAN) {
                         uint64_t start= keys[i];
 			            uint64_t key_sum = 0, val_sum = 0;
+                        // printf("SCAN start key %lu, range %lu\n", keys[i], ranges[i]);
 #if LEAFDS
                         concurrent_map.map_range_length(keys[i], ranges[i], [&key_sum, &val_sum]([[maybe_unused]] auto key, auto val) {
                             key_sum += key;
@@ -409,7 +411,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         }
         uint64_t key_sum = 0;
         uint64_t val_sum = 0;
-        for(int i = 0; i < RUN_SIZE; i++) {
+        for(uint64_t i = 0; i < RUN_SIZE; i++) {
             key_sum += query_results_keys[i];
             val_sum += query_results_vals[i];
         }
