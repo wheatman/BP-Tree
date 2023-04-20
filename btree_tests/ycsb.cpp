@@ -92,8 +92,8 @@ namespace Dummy {
 }
 
 
-static uint64_t LOAD_SIZE = 100000000;
-static uint64_t RUN_SIZE = 100000000;
+static uint64_t LOAD_SIZE = 10000;
+static uint64_t RUN_SIZE = 10000;
 
 void loadKey(TID tid, Key &key) {
     return ;
@@ -125,7 +125,7 @@ void* threadFunction(void* arg) {
 
 template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
 
-    const int numThreads = 48;
+    const int numThreads = 1;
     pthread_t threads[numThreads];
     ThreadArgs threadArgs[numThreads];
     int per_thread = (end - start)/numThreads;
@@ -198,49 +198,49 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
 
     if (ap == UNIFORM) {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
-            init_file = "../../ycsb/index-microbench/workloads/loada_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsa_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loada_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnsa_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
-            init_file = "../../ycsb/index-microbench/workloads/loadb_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsb_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loadb_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnsb_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
-            init_file = "../../ycsb/index-microbench/workloads/loadc_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsc_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loadc_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnsc_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
-            init_file = "../../ycsb/index-microbench/workloads/loadd_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsd_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loadd_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnsd_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
-            init_file = "../../ycsb/index-microbench/workloads/loade_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnse_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loade_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnse_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_X) {
-            init_file = "../../ycsb/index-microbench/workloads/loadx_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsx_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loadx_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../../ycsb/index-microbench/workloads/loady_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/txnsy_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/loady_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/txnsy_unif_int.dat";
         }
     } else {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loada_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsa_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loada_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnsa_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadb_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsb_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loadb_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnsb_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadc_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsc_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loadc_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnsc_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadd_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsd_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loadd_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnsd_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loade_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnse_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loade_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnse_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_X) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsx_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loadx_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../../ycsb/index-microbench/workloads/zipfian/loadx_unif_int.dat";
-            txn_file = "../../ycsb/index-microbench/workloads/zipfian/txnsy_unif_int.dat";
+            init_file = "../../RECIPE/index-microbench/workloads/zipfian/loadx_unif_int.dat";
+            txn_file = "../../RECIPE/index-microbench/workloads/zipfian/txnsy_unif_int.dat";
         }
     }
 
@@ -367,14 +367,14 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                             val_sum += val;
                         });
 #else
-                        // uint64_t max_key = 0;
-                        concurrent_map.map_range_length(keys[i], ranges[i], [&key_sum, &val_sum]([[maybe_unused]] auto el) {
+                        uint64_t max_key = 0;
+                        concurrent_map.map_range_length(keys[i], ranges[i], [&key_sum, &val_sum, &max_key]([[maybe_unused]] auto el) {
                             key_sum += el.first;
                             val_sum += el.second;
-                            // max_key = max(max_key, el.first);
+                            max_key = max(max_key, el.first);
                         });
 
-                        // printf("\nSCANEND %lu %lu",keys[i],max_key);
+                        printf("\nSCANEND %lu %lu",keys[i],max_key);
 
 #endif
 
