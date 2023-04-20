@@ -323,7 +323,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         std::vector<double> load_tpts;
         std::vector<double> run_tpts;
 
-        for(int k =0; k<6; k++){
+        for(int k =0; k<1; k++){
             std::vector<uint64_t> query_results_keys(RUN_SIZE);
             std::vector<uint64_t> query_results_vals(RUN_SIZE);
             tlx::btree_map<uint64_t, uint64_t, std::less<uint64_t>, tlx::btree_default_traits<uint64_t, uint64_t>,
@@ -338,7 +338,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                 auto duration = end- starttime; //std::chrono::duration_cast<std::chrono::microseconds>(
                         //std::chrono::system_clock::now() - starttime);
                 if(k!=0) load_tpts.push_back(((double)LOAD_SIZE)/duration);
-                printf("\tLoad took %lu us, throughput = %f ops/us\n", duration, ((double)LOAD_SIZE)/duration);
+                // printf("\tLoad took %lu us, throughput = %f ops/us\n", duration, ((double)LOAD_SIZE)/duration);
                 //printf("Throughput: load, %f ,ops/us and time %ld in us\n", (LOAD_SIZE * 1.0) / duration.count(), duration.count());
             }
         {
@@ -407,7 +407,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::system_clock::now() - starttime);
             if(k!=0) run_tpts.push_back((RUN_SIZE * 1.0) / duration.count());
-            printf("\tRun, throughput: %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+            // printf("\tRun, throughput: %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
         }
         uint64_t key_sum = 0;
         uint64_t val_sum = 0;
@@ -415,10 +415,10 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             key_sum += query_results_keys[i];
             val_sum += query_results_vals[i];
         }
-        printf("\ttotal key sum = %lu, total val sum = %lu\n\n", key_sum, val_sum);
+        // printf("\ttotal key sum = %lu, total val sum = %lu\n\n", key_sum, val_sum);
         }
-        printf("\tMedian Load throughput: %f ,ops/us\n", findMedian(load_tpts));
-        printf("\tMedian Run throughput: %f ,ops/us\n", findMedian(run_tpts));
+        // printf("\tMedian Load throughput: %f ,ops/us\n", findMedian(load_tpts));
+        // printf("\tMedian Run throughput: %f ,ops/us\n", findMedian(run_tpts));
     }
 }
 
@@ -435,7 +435,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("%s, workload%s, %s, %s, threads %s\n", argv[1], argv[2], argv[3], argv[4], argv[5]);
+    // printf("%s, workload%s, %s, %s, threads %s\n", argv[1], argv[2], argv[3], argv[4], argv[5]);
 
     int index_type;
     if (strcmp(argv[1], "art") == 0)
