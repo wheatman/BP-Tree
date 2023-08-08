@@ -1,3 +1,6 @@
 [submodule "btree_tests/ParallelTools"]
 	path = btree_tests/ParallelTools
 	url = git@github.com:wheatman/ParallelTools.git
+[submodule "tlx-leafds/leafDS"]
+	path = tlx-leafds/leafDS
+	url = git@github.com:itshelenxu/leafDS.git
