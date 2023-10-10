@@ -69,5 +69,8 @@ endif
 ycsb: ycsb.cpp
 	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ ycsb.cpp
 
+bwtree: bwtree_test.cpp
+	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ bwtree_test.cpp
+
 clean:
 	rm -f *.o opt profile basic code.profdata default.profraw
