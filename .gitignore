@@ -1,0 +1,4 @@
+*.csv
+out*
+basic
+CMakeFiles
