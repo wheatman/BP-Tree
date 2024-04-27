@@ -1838,7 +1838,7 @@ public:
             const InnerNode* innernode = static_cast<const InnerNode*>(n);
 		if (n->level > PSUM_HEIGHT_CUTOFF) {	
       // parallel_for(0, innernode->slotuse + 1, [&](const unsigned short &slot) {
-		  cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+		  for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
 			{
 					psum_helper(innernode->childid[slot], partial_sums);
 			}

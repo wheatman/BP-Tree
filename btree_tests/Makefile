@@ -4,7 +4,6 @@ INFO?=0
 ENABLE_TRACE_TIMER?=0
 CYCLE_TIMER?=0
 DEBUG?=0
-CILK?=0
 SANITIZE?=0
 CORRECTNESS?=0
 LEAFDS?=0
@@ -12,19 +11,14 @@ LEAFDS?=0
 ifeq ($(LEAFDS),1)
 CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -IleafDS/ -I../tlx-leafds -gdwarf-4
 else
-CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-plain -gdwarf-4
+CFLAGS := -pthread -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-plain -gdwarf-4 -fmax-errors=1
 endif
 
 ifeq ($(SANITIZE),1)
-ifeq ($(CILK),1)
-CFLAGS += -fsanitize=cilk,undefined,address -fno-omit-frame-pointer
-# CFLAGS += -fsanitize=undefined,address -fno-omit-frame-pointer
-else
 CFLAGS += -fsanitize=undefined,address -fno-omit-frame-pointer
 endif
-endif
 
-LDFLAGS := -lrt -lm -lpthread -lm -ldl -latomic -ljemalloc
+LDFLAGS := -lrt -lm -lm -ldl -latomic # -ljemalloc
 # -ljemalloc -ltcmalloc
 
 ifeq ($(VALGRIND),0)
@@ -32,16 +26,10 @@ CFLAGS += -march=native
 endif
 
 ifeq ($(LEAFDS),1)
-DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DLEAFDS=$(LEAFDS) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DVALGRIND=$(VALGRIND) -DAVX512=$(AVX512) -DCORRECTNESS=$(CORRECTNESS)
+DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DLEAFDS=$(LEAFDS) -DCYCLE_TIMER=$(CYCLE_TIMER) -DDEBUG=$(DEBUG) -DVALGRIND=$(VALGRIND) -DAVX512=$(AVX512) -DCORRECTNESS=$(CORRECTNESS)
 else
-DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DLEAFDS=$(LEAFDS) -DCYCLE_TIMER=$(CYCLE_TIMER) -DCILK=$(CILK) -DDEBUG=$(DEBUG) -DCORRECTNESS=$(CORRECTNESS) -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER)
+DEFINES := -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER) -DLEAFDS=$(LEAFDS) -DCYCLE_TIMER=$(CYCLE_TIMER) -DDEBUG=$(DEBUG) -DCORRECTNESS=$(CORRECTNESS) -DENABLE_TRACE_TIMER=$(ENABLE_TRACE_TIMER)
 endif
-
-ifeq ($(CILK),1)
-CFLAGS += -fopencilk -DPARLAY_CILK
-ONE_WORKER = CILK_NWORKERS=1
-endif
-
 
 ifeq ($(DEBUG),0)
 CFLAGS += -DNDEBUG
