@@ -1,8 +1,11 @@
 # Concurrent B-Trees with Buffered Partition Arrays
 
 ## Content organization
+
 Relevant code sections:
-https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pHyDVL7OjqDHb-Q0u406x894/edit?usp=sharing- `btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
+https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pHyDVL7OjqDHb-Q0u406x894/edit?usp=sharing- 
+
+-`btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
 - `tlx-plain/container/`: B+-tree data structure.
 - `tlx-leafds/container/`: BP-tree data structure.
 - `btree_tests/ParallelTools`: Submodule for locking mechanisms used in the B-tree and BP-tree.
@@ -18,62 +21,26 @@ See instructions here: https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pH
 Setup instructions:
 ```
 git clone https://github.com/wheatman/concurrent-btrees.git
-make sure you are on the artifact_evaluation branch
+make sure you are on the main branch
 
-## tlx - Collection of C++ Data Structures, Algorithms, and Miscellaneous Helpers
-
-tlx is a collection of C++ helpers and extensions universally needed, but not found in the STL.The most important design goals and conventions are:
-
-- high modularity with as little dependencies between modules as possible.
-- attempt to never break existing interfaces.
-- compile on all platforms with C++ – smartphones, supercomputers, windows, etc.
-- zero external dependencies: no additional libraries are required.
-- warning and bug-freeness on all compilers.
-- keep overhead down – small overall size such that is can be included without bloating applications.
-
---->> **[Doxygen Documentation](https://tlx.github.io/)** <<---
-
-[![Build Status](https://travis-ci.org/tlx/tlx.svg?branch=master)](https://travis-ci.org/tlx/tlx)
-[![Build status](https://ci.appveyor.com/api/projects/status/xxwj7usfjfs3h9id/branch/master?svg=true)](https://ci.appveyor.com/project/bingmann/tlx/branch/master)
-[![Coverage Status](https://coveralls.io/repos/github/tlx/tlx/badge.svg)](https://coveralls.io/github/tlx/tlx)
-
-## List of the most commonly used components:
-
-- `CountingPtr` – an intrusive reference counting pointer
-- `die()` - Simple Invariant Testing : `die()`, `die_unless()`, `die_if()`, `die_unequal()`.
-- logger.hpp : `LOG`, `LOG1`, `LOGC`, `sLOG`, `wrap_unprintable()`.
-- Miscellaneous: `timestamp()`, `unused()`, `vector_free()`.
-- Algorithms : `merge_combine()`, `exclusive_scan()`, `multiway_merge()`, `parallel_multiway_merge()`, `multisequence_selection()`, `multisequence_partition()`.
-- Data Structures : `RingBuffer`, `SimpleVector`, `StringView`, B+ Trees, Loser Trees, `RadixHeap`, `(Addressable) D-Ary Heap`
-- Defines and Macros : `TLX_LIKELY`, `TLX_UNLIKELY`, `TLX_ATTRIBUTE_PACKED`, `TLX_ATTRIBUTE_ALWAYS_INLINE`, `TLX_ATTRIBUTE_FORMAT_PRINTF`, `TLX_DEPRECATED_FUNC_DEF`.
-- Message Digests : `MD5`, `md5_hex()`, `SHA1`, `sha1_hex()`, `SHA256`, `sha256_hex()`, `SHA512`, `sha512_hex()`.
-- Math Functions : `integer_log2_floor()`, `is_power_of_two()`, `round_up_to_power_of_two()`, `round_down_to_power_of_two()`, `ffs()`, `clz()`, `ctz()`, `abs_diff()`, `bswap32()`, `bswap64()`, `popcount()`, `power_to_the`, `Aggregate`, `PolynomialRegression`.
-- String Algorithms : `starts_with()`, `ends_with()`, `contains()`, `contains_word()`, `trim()`, `replace_all()`, `erase_all()`, `join()`, `split()`, `split_view()`, `split_words()`, `union_words()`, `split_quoted()`, `join_quoted()`, `to_lower()`, `hexdump()`, `bitdump_le8()`, `word_wrap()`, `escape_html()`, `parse_uri()`, `parse_uri_form_data()`, `parse_si_iec_units()`, `format_iec_units()`, `ssprintf()`, `expand_environment_variables()`, `levenshtein()`, `hash_djb2()`, `hash_sdbm()`.
-- Meta-Template Programming : `call_foreach()`, `apply_tuple()`, `vmap_foreach()`, `Log2Floor`, `FunctionChain`, `FunctionStack`, `is_std_pair`, `is_std_tuple`, `is_std_vector`, `is_std_array`, `TLX_MAKE_HAS_MEMBER`.
-- Sorting Algorithms : `parallel_mergesort()` (experimental parallel merge sort from MCSTL), `sort_strings()` (using radix sort and multikey quicksort), `sort_strings_parallel()` (using parallel super scalar string sample sort), sorting network for up to sixteen elements.
-- Backtrace Printing : `print_cxx_backtrace()`.
-- Command Line Parsing : `CmdlineParser`.
-- Multi-Phase Timer: `MultiTimer`, `ScopedMultiTimerSwitch`, `ScopedMultiTimer`.
-- Fast Delegates : `Delegate` - a better `std::function<>` replacement.
-- SipHash : simple string hashing `siphash()`
-- StackAllocator : stack-local allocations
-- Threading : `ThreadPool`, `Semaphore`, `ThreadBarrierMutex`, `ThreadBarrierSpin`.
-
-## Bugs
-
-Please report bugs via the [github issue tracking system](https://github.com/tlx/tlx/issues).
-
-## License
-
-tlx is licensed under the [Boost Software License - Version 1.0](https://github.com/tlx/tlx/blob/master/LICENSE).
-
-If you use tlx in an academic context or publication, please cite it as
+If you use BP-tree in an academic context or publication, please cite it as
 
 ```
-@Misc{TLX,
-  title = 	 {{TLX}: Collection of Sophisticated {C++} Data Structures, Algorithms, and Miscellaneous Helpers},
-  author = 	 {Timo Bingmann},
-  year = 	 2018,
-  note = 	 {\url{https://panthema.net/tlx}, retrieved {Oct.} 7, 2020},
+@article{10.14778/3611479.3611502,
+author = {Xu, Helen and Li, Amanda and Wheatman, Brian and Marneni, Manoj and Pandey, Prashant},
+title = {BP-Tree: Overcoming the Point-Range Operation Tradeoff for In-Memory B-Trees},
+year = {2023},
+issue_date = {July 2023},
+publisher = {VLDB Endowment},
+volume = {16},
+number = {11},
+issn = {2150-8097},
+url = {https://doi.org/10.14778/3611479.3611502},
+doi = {10.14778/3611479.3611502},
+abstract = {B-trees are the go-to data structure for in-memory indexes in databases and storage systems. B-trees support both point operations (i.e., inserts and finds) and range operations (i.e., iterators and maps). However, there is an inherent tradeoff between point and range operations since the optimal node size for point operations is much smaller than the optimal node size for range operations. Existing implementations use a relatively small node size to achieve fast point operations at the cost of range operation throughput.We present the BP-tree, a variant of the B-tree, that overcomes the decades-old point-range operation tradeoff in traditional B-trees. In the BP-tree, the leaf nodes are much larger in size than the internal nodes to support faster range scans. To avoid any slowdown in point operations due to large leaf nodes, we introduce a new insert-optimized array called the buffered partitioned array (BPA) to efficiently organize data in leaf nodes. The BPA supports fast insertions by delaying ordering the keys in the array. This results in much faster range operations and faster point operations at the same time in the BP-tree.Our experiments show that on 48 hyperthreads, on workloads generated from the Yahoo! Cloud Serving Benchmark (YCSB), the BP-tree supports similar or faster point operation throughput (between .94\texttimes{}-1.2\texttimes{} faster) compared to Masstree and OpenBw-tree, two state-of-the-art in-memory key-value (KV) stores. On a YCSB workload with short scans, the BP-tree is about 7.4\texttimes{} faster than Masstree and 1.6\texttimes{} faster than OpenBw-tree. Furthermore, we extend the YCSB to add large range workloads, commonly found in database applications, and show that the BP-tree is 30\texttimes{} faster than Masstree and 2.5\texttimes{} faster than OpenBw-tree.We also provide a reference implementation for a concurrent B+-tree and find that the BP-tree supports faster (between 1.03\texttimes{}-1.2\texttimes{} faster) point operations when compared to the best-case configuration for B+-trees for point operations while supporting similar performance (about .95\texttimes{} as fast) on short range operations and faster (about 1.3\texttimes{} faster) long range operations.},
+journal = {Proc. VLDB Endow.},
+month = {jul},
+pages = {2976–2989},
+numpages = {14}
 }
 ```
