@@ -62,4 +62,4 @@ bwtree: bwtree_test.cpp
 	$(CXX) $(CFLAGS) $(DEFINES) $(LDFLAGS) -o $@ bwtree_test.cpp
 
 clean:
-	rm -f *.o opt profile basic code.profdata default.profraw
+	rm -f *.o opt profile basic ycsb code.profdata default.profraw
