@@ -7,18 +7,19 @@ DEBUG?=0
 SANITIZE?=0
 CORRECTNESS?=0
 LEAFDS?=0
+AVX512?=0
 
 ifeq ($(LEAFDS),1)
-CFLAGS := -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -IleafDS/ -I../tlx-leafds -gdwarf-4
+CFLAGS := -pthread -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-leafds -fmax-errors=1
 else
-CFLAGS := -pthread -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-plain -gdwarf-4 -fmax-errors=1
+CFLAGS := -pthread -Wall -Wextra -O$(OPT) -g  -std=c++20 -IParallelTools/ -I../tlx-plain -fmax-errors=1
 endif
 
 ifeq ($(SANITIZE),1)
 CFLAGS += -fsanitize=undefined,address -fno-omit-frame-pointer
 endif
 
-LDFLAGS := -lrt -lm -lm -ldl -latomic # -ljemalloc
+LDFLAGS := -lrt -lm -lm -ldl -latomic -ljemalloc
 # -ljemalloc -ltcmalloc
 
 ifeq ($(VALGRIND),0)

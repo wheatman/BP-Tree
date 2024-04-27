@@ -32,7 +32,7 @@
 #include <ParallelTools/reducer.h>
 #include <ParallelTools/Lock.hpp>
 
-#include <leafDS.hpp>
+#include "leafDS/leafDS.hpp"
 
 // leafDS parameters
 #define MANUAL_GET_NUM_ELTS 1
@@ -1996,7 +1996,7 @@ public:
        {
            const InnerNode* innernode = static_cast<const InnerNode*>(n);
                if (n->level >= PSUM_HEIGHT_CUTOFF) {
-                       cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+                       for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
                        {
                        	psum_helper_with_subtract(innernode->childid[slot], partial_sums);
                        }
@@ -2010,7 +2010,7 @@ public:
    }
 
 
-
+	// TODO: use pthreads pfor if we need parallel map again
    void psum_helper_with_map(const node* n, uint64_t* partial_sums) const {
        if (n->is_leafnode())
        {
@@ -2022,7 +2022,7 @@ public:
        {
            const InnerNode* innernode = static_cast<const InnerNode*>(n);
                if (n->level >= PSUM_HEIGHT_CUTOFF) {
-                       cilk_for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
+                       for (unsigned short slot = 0; slot < innernode->slotuse + 1; ++slot)
                        {
                        	psum_helper_with_map(innernode->childid[slot], partial_sums);
                        }
