@@ -14,12 +14,13 @@ g++-11, jemalloc
 
 The repo was recently run and compiled on a machine running Ubuntu 20.04.
 
-### Running benchmarks
+### Running benchmarks/setup
 
 See instructions here: https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pHyDVL7OjqDHb-Q0u406x894/edit?usp=sharing
 
 If you use BP-tree in an academic context or publication, please cite it as
 
+```
 @article{10.14778/3611479.3611502,
 author = {Xu, Helen and Li, Amanda and Wheatman, Brian and Marneni, Manoj and Pandey, Prashant},
 title = {BP-Tree: Overcoming the Point-Range Operation Tradeoff for In-Memory B-Trees},
@@ -37,3 +38,4 @@ month = {jul},
 pages = {2976–2989},
 numpages = {14}
 }
+```
