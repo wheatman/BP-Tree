@@ -5,7 +5,7 @@
 Relevant code sections:
 https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pHyDVL7OjqDHb-Q0u406x894/edit?usp=sharing- 
 
--`btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
+- `btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
 - `tlx-plain/container/`: B+-tree data structure.
 - `tlx-leafds/container/`: BP-tree data structure.
 - `btree_tests/ParallelTools`: Submodule for locking mechanisms used in the B-tree and BP-tree.
