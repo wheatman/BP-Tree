@@ -1,44 +1,24 @@
 # Concurrent B-Trees with Buffered Partition Arrays
 
 ## Content organization
-
-Branches:
-- `reader_writer_locks`: The baseline TLX B+-tree with added optimistic concurrency control. 
-- `with_leafds`: The B+-tree containing the BPA within leaf nodes with added optimistic concurrency control.
-
 Relevant code sections:
-- `btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
-- `tlx/container/`: B+-tree data structures.
-- `btree_tests/leafDS`: Submodule for the BPA implementation used in the BP-tree. 
+https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pHyDVL7OjqDHb-Q0u406x894/edit?usp=sharing- `btree_tests`: Scripts for running correctness and performance tests, including microbenchmarks and YCSB workloads.
+- `tlx-plain/container/`: B+-tree data structure.
+- `tlx-leafds/container/`: BP-tree data structure.
 - `btree_tests/ParallelTools`: Submodule for locking mechanisms used in the B-tree and BP-tree.
+
+## Requirements
+g++-11, jemalloc
+
+The repo was recently run and compiled on a machine running Ubuntu 20.04.
 
 ### Running benchmarks
 
+See instructions here: https://docs.google.com/document/d/1GqQBpYTzSixPAQMfuK8pHyDVL7OjqDHb-Q0u406x894/edit?usp=sharing
 Setup instructions:
 ```
 git clone https://github.com/wheatman/concurrent-btrees.git
-// Install OpenCilk as instructed here: https://www.opencilk.org/doc/users-guide/install/
-git submodule init ./btree_tests/*
-git submodule update ./btree_tests/*
-export CXX=[path to compiler]
-``` 
-You can set the `LEAFDS` flag to `0` to utilize the Plain BTree or set it to `1` to utilize the LeafDS data structures.
-Microbenchmarks: 
-```
-cd btree_tests
-make CILK=1 DEBUG=0 LEAFDS=0 basic
-./basic [number of elements to insert] [number of queries]
-```
-
-YCSB:
-```
-cd btree_tests
-make CILK=1 DEBUG=0 LEAFDS=0 ycsb
-./ycsb art a randint uniform 48
-Usage: ./ycsb btree [ycsb workload type] randint [access pattern] 48
-       1. ycsb workload type: a, b, c, e, x, y
-       2. access pattern: uniform, zipfian
-```
+make sure you are on the artifact_evaluation branch
 
 ## tlx - Collection of C++ Data Structures, Algorithms, and Miscellaneous Helpers
 
