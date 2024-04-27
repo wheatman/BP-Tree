@@ -29,7 +29,6 @@ static long get_usecs() {
   return st.tv_sec * 1000000 + st.tv_usec;
 }
 
-
 struct ThreadArgs {
     std::function<void(int, int)> func;
     int start;
@@ -1047,7 +1046,7 @@ void test_concurrent_sum(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes, uint32_t leaf_bytes>
 void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials) {
   std::vector<T> data =
-      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+      create_random_data<T>(2*max_size, std::numeric_limits<T>::max(), seed);
 
   tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, leaf_bytes>,
                   std::allocator<T>, true> concurrent_map;
@@ -1055,20 +1054,20 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
   // TIME INSERTS
   uint64_t start, end;
 
-  start = get_usecs();
-  cilk_for(uint32_t i = 0; i < max_size; i++) {
-    concurrent_map.insert({data[i], 2*data[i]});
-  }
-  end = get_usecs();
-  printf("\tDone inserting %lu elts in %lu\n",max_size, end - start);
-
   std::vector<uint64_t> psum_times(trials);
   for(int i = 0; i < trials + 1; i++) {
-          start = get_usecs();
-          auto concurrent_sum = concurrent_map.psum();
-          end = get_usecs();
+    start = get_usecs();
+    parallel_for(0, 2*max_size, [&](const uint32_t &i) {
+      concurrent_map.insert({data[i], 2*data[i]});
+    });
+    end = get_usecs();
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end - start);
 
-          printf("concurrent btree sum got %lu\n", concurrent_sum);
+    start = get_usecs();
+    auto concurrent_sum = concurrent_map.psum();
+    end = get_usecs();
+
+    printf("concurrent btree sum got %lu in time %lu\n", concurrent_sum, end - start);
 
 	  if(i > 0) {
 		  psum_times[i-1] = end - start;
@@ -1502,7 +1501,6 @@ test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUER
     });
     printf("trial %d: inserted %lu\n", cur_trial, 2*max_size);
 
-/*
     // do range queries for given length 
     std::vector<uint64_t> range_query_lengths =
       create_random_data<uint64_t>(NUM_QUERIES, MAX_QUERY_SIZE - 1, query_seed_2);
@@ -1531,6 +1529,8 @@ test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUER
     }
 
     printf("\t\t\tsum vals %lu\n", sum_all_vals);
+    
+/*
     printf("*** MAP UNSORTED ***\n");
     std::vector<T> concurrent_range_query_key_sums(NUM_QUERIES);
     std::vector<T> concurrent_range_query_val_sums(NUM_QUERIES);
@@ -3335,12 +3335,16 @@ int main(int argc, char *argv[]) {
   }
 
   if (result["serial_microbenchmark_allsize"].as<bool>()) {
+    bool correct = test_serial_microbenchmarks_map<unsigned long, 64, 64>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_serial_microbenchmarks_map<unsigned long, 128, 128>(num_inserts, num_queries, seed, write_csv, trials);
+/*
     bool correct = test_serial_microbenchmarks_map<unsigned long, 256, 256>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_serial_microbenchmarks_map<unsigned long, 512, 512>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_serial_microbenchmarks_map<unsigned long, 1024, 1024>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_serial_microbenchmarks_map<unsigned long, 2048, 2048>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_serial_microbenchmarks_map<unsigned long, 4096, 4096>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_serial_microbenchmarks_map<unsigned long, 8192, 8192>(num_inserts, num_queries, seed, write_csv, trials);
+*/
     return !correct;
   }
 
@@ -3351,7 +3355,6 @@ int main(int argc, char *argv[]) {
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 2048, 2048>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 4096, 4096>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 8192, 8192>(num_inserts, num_queries, seed, write_csv, trials);
-/*
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 16384, 16384>(num_inserts, num_queries, seed, write_csv, trials);
 
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 32768, 32768>(num_inserts, num_queries, seed, write_csv, trials);
@@ -3362,7 +3365,6 @@ int main(int argc, char *argv[]) {
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 16384>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 32768>(num_inserts, num_queries, seed, write_csv, trials);
     correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 65536>(num_inserts, num_queries, seed, write_csv, trials);
-*/
     return !correct;
   }
   if (result["sequential_inserts"].as<bool>()) {

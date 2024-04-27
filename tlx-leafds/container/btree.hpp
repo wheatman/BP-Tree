@@ -36,10 +36,12 @@
 
 // leafDS parameters
 #define MANUAL_GET_NUM_ELTS 1
+/*
 #define HEADER_SIZE 32
 #define LOG_SIZE HEADER_SIZE
 #define BLOCK_SIZE 32
 #define SLOTS (LOG_SIZE + HEADER_SIZE + BLOCK_SIZE * HEADER_SIZE)
+*/
 #define PSUM_HEIGHT_CUTOFF 2
 namespace tlx {
 
@@ -88,10 +90,10 @@ namespace tlx {
  * Generates default traits for a B+ tree used as a set or map. It estimates
  * leaf and inner node sizes by assuming a cache line multiple of 256 bytes.
 */
-template <typename Key, typename Value, uint32_t internal_bytes = INNER_BYTES, uint32_t hs = HEADER_SIZE, uint32_t ls=LOG_SIZE, uint32_t bs = BLOCK_SIZE>
+template <typename Key, typename Value, uint32_t internal_bytes = 1024, uint32_t ls = 32, uint32_t bs = 32>
 struct btree_default_traits {
     static const uint32_t log_size = ls;
-    static const uint32_t header_size = hs;
+    static const uint32_t header_size = log_size;
     static const uint32_t block_size = bs;
 
     //! If true, the tree will self verify its invariants after each insert() or
@@ -141,7 +143,7 @@ struct btree_default_traits {
 template <typename Key, typename Value,
           typename KeyOfValue,
           typename Compare = std::less<Key>,
-          typename Traits = btree_default_traits<Key, Value>,
+          typename Traits = btree_default_traits<Key, Value, 1024, 32, 32>,
           bool Duplicates = false,
           typename Allocator = std::allocator<Value>,
           bool concurrent = false>
@@ -2300,9 +2302,9 @@ private:
             const LeafNode* leaf = static_cast<const LeafNode*>(n);
             LeafNode* newleaf = allocate_leaf();
 
-            newleaf->slotuse = leaf->slotuse;
-            std::copy(leaf->slotdata, leaf->slotdata + leaf->slotuse,
-                      newleaf->slotdata);
+            // newleaf->slotuse = leaf->slotuse;
+            // std::copy(leaf->slotdata, leaf->slotdata + leaf->slotuse,
+            //           newleaf->slotdata);
 
             if (head_leaf_ == nullptr)
             {

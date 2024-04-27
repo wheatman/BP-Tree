@@ -16,6 +16,8 @@
 
 // #define CORRECTNESS 0
 #define TRIALS 5
+#define SLOTS 0
+
 static long get_usecs() {
   struct timeval st;
   gettimeofday(&st, NULL);
@@ -312,7 +314,7 @@ void test_concurrent_sum_correctness(uint64_t max_size, std::seed_seq &seed) {
 template <class T, uint32_t internal_bytes>
 void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials) {
   std::vector<T> data =
-      create_random_data<T>(max_size, std::numeric_limits<T>::max(), seed);
+      create_random_data<T>(2*max_size, std::numeric_limits<T>::max(), seed);
 
   std::vector<uint64_t> insert_times(trials);
   std::vector<uint64_t> with_map_times(trials);
@@ -324,9 +326,9 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
 
     // TIME INSERTS
     start = get_usecs();
-    cilk_for(uint32_t i = 0; i < max_size; i++) {
+    parallel_for(0, 2*max_size, [&](const uint32_t &i) {
       concurrent_map.insert({data[i], 2*data[i]});
-    }
+    });
     end = get_usecs();
     printf("\tDone inserting %lu elts in %lu\n",max_size, end - start);
 
@@ -337,14 +339,30 @@ void test_concurrent_sum_time(uint64_t max_size, std::seed_seq &seed, int trials
 	  
 	  printf("\tconcurrent btree sum with map got %lu in %lu\n", concurrent_sum, map_time);
 
+		  if(i > 0) {
+			  insert_times[i-1] = insert_time;
+			  with_map_times[i-1] = map_time;
+		  }
+
+  }
+  for(int i = 0; i < trials + 1; i++) {
+	  tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+                  std::allocator<T>, true> concurrent_map;
+
+    // TIME INSERTS
+    start = get_usecs();
+    parallel_for(0, 2*max_size, [&](const uint32_t &i) {
+      concurrent_map.insert({data[i], 2*data[i]});
+    });
+    end = get_usecs();
+    printf("\tDone inserting %lu elts in %lu\n",max_size, end - start);
+
 	  start = get_usecs();
-	  concurrent_sum = concurrent_map.psum_with_subtract();
+	  auto concurrent_sum = concurrent_map.psum_with_subtract();
 	  end = get_usecs();
 	  subtract_time = end - start;
 	  printf("\tconcurrent btree sum with subtract got %lu in %lu\n", concurrent_sum, subtract_time);
 		  if(i > 0) {
-			  insert_times[i-1] = insert_time;
-			  with_map_times[i-1] = map_time;
 			  with_subtract_times[i-1] = subtract_time;
 		  }
   }
@@ -1260,7 +1278,7 @@ test_sequential_inserts(uint64_t max_size, int trials) {
   return true;
 }
 
-template <class T, uint32_t internal_bytes>
+template <class T, uint32_t internal_bytes, uint32_t header_size, uint32_t block_size>
 bool
 test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUERY_SIZE, std::seed_seq &seed, int trials) {
   printf("num trials = %d\n", trials);
@@ -1284,15 +1302,16 @@ test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUER
     std::vector<uint64_t> range_query_start_idxs =
         create_random_data<uint64_t>(NUM_QUERIES, data.size() - 1, query_seed);
   #endif
-    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, header_size, block_size>,
                   std::allocator<T>, true> concurrent_map;
 
     // TIME INSERTS
     parallel_for(0, 2*max_size, [&](const uint32_t &i) {
       concurrent_map.insert({data[i], 2*data[i]});
     });
-    printf("trial %d: inserted %lu\n", cur_trial, 2*max_size);
 
+    printf("trial %d: inserted %lu\n", cur_trial, 2*max_size);
     // do range queries for given length 
     std::vector<uint64_t> range_query_lengths =
       create_random_data<uint64_t>(NUM_QUERIES, MAX_QUERY_SIZE - 1, query_seed_2);
@@ -1322,6 +1341,7 @@ test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUER
 
     printf("\t\t\tsum vals %lu\n", sum_all_vals);
 
+/*
     printf("*** MAP UNSORTED ***\n");
     std::vector<T> concurrent_range_query_key_sums(NUM_QUERIES);
     std::vector<T> concurrent_range_query_val_sums(NUM_QUERIES);
@@ -1362,6 +1382,8 @@ test_map_cache_misses(uint64_t max_size, uint64_t NUM_QUERIES, uint32_t MAX_QUER
     }
     printf("\t\t\tmap range sum keys %lu sum vals %lu\n", sum_all_keys, sum_all_vals);
     printf("END: trial %d, total trials %d\n", cur_trial, trials);
+
+*/
   }
   return true;
 }
@@ -1561,7 +1583,7 @@ test_serial_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::se
 
 
  
-template <class T, uint32_t internal_bytes>
+template <class T, uint32_t internal_bytes, uint32_t header_size, uint32_t block_size>
 bool
 test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std::seed_seq &seed, bool write_csv, int trials) {
   // std::vector<uint32_t> num_query_sizes{1000};
@@ -1574,7 +1596,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
   std::vector<uint64_t> unsorted_range_query_times_by_size;
 
   for (int cur_trial = 0; cur_trial <= trials; cur_trial++) {
-    printf("\nRunning leafds btree with internal bytes = %u with leafds slots %d, trial = %d\n",internal_bytes, SLOTS, cur_trial);
+    printf("\nRunning leafds btree with internal bytes = %u with header size %u, block size %u, trial = %d\n",internal_bytes, header_size, block_size, cur_trial);
 
     // std::vector<uint32_t> num_query_sizes{100, 1000, 10000, 100000};
 
@@ -1608,7 +1630,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     std::vector<uint64_t> range_query_start_idxs =
         create_random_data<uint64_t>(NUM_QUERIES, data.size() - 1, query_seed);
   #endif
-    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes>,
+    tlx::btree_map<T, T, std::less<T>, tlx::btree_default_traits<T, T, internal_bytes, header_size, block_size>,
                   std::allocator<T>, true> concurrent_map;
 
     // TIME INSERTS
@@ -1982,7 +2004,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
     find_time_med = find_times[trials/2];
 
     outfile.open("insert_finds.csv", std::ios_base::app); 
-    outfile << "leafds, " << internal_bytes << ", " << SLOTS << ", " <<  max_size << ", " <<  insert_time_med << ", " <<  NUM_QUERIES << ", " <<  find_time_med << ", \n";
+    outfile << "leafds, " << internal_bytes << ", " << header_size << ", " << block_size << ", " <<  max_size << ", " <<  insert_time_med << ", " <<  NUM_QUERIES << ", " <<  find_time_med << ", \n";
     outfile.close();
     outfile.open("range_queries.csv", std::ios_base::app); 
     printf("num sorted trials %lu, num unsorted trials %lu\n", sorted_range_query_times_by_size.size(), unsorted_range_query_times_by_size.size());
@@ -1995,7 +2017,7 @@ test_concurrent_microbenchmarks_map(uint64_t max_size, uint64_t NUM_QUERIES, std
       }
       std::sort(curr_unsorted_query_times.begin(), curr_unsorted_query_times.end());
       std::sort(curr_sorted_query_times.begin(), curr_sorted_query_times.end());
-      outfile << "leafds, " << internal_bytes << ", " << SLOTS << ", " <<  max_size << ", " <<  NUM_QUERIES << ", " <<  num_query_sizes[i] << ", " <<  curr_unsorted_query_times[trials/2] << ", " <<  curr_sorted_query_times[trials/2] << ", \n";
+      outfile << "leafds, " << internal_bytes << ", " <<  header_size << ", " << block_size << ", " <<  max_size << ", " <<  NUM_QUERIES << ", " <<  num_query_sizes[i] << ", " <<  curr_unsorted_query_times[trials/2] << ", " <<  curr_sorted_query_times[trials/2] << ", \n";
     }
     outfile.close();
   }
@@ -2689,7 +2711,18 @@ int main(int argc, char *argv[]) {
   }
 
   if (result["microbenchmark_leafds"].as<bool>()) {
-    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024>(num_inserts, num_queries, seed, write_csv, trials);
+    bool correct = test_concurrent_microbenchmarks_map<unsigned long, 1024, 4, 4>(num_inserts, num_queries, seed, write_csv, trials);
+
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 4, 8>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 8, 8>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 8, 16>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 16, 16>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 16, 32>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 32, 32>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 32, 64>(num_inserts, num_queries, seed, write_csv, trials);
+    correct |= test_concurrent_microbenchmarks_map<unsigned long, 1024, 64, 64>(num_inserts, num_queries, seed, write_csv, trials);
+
+
     return !correct;
   }
   if (result["sequential_inserts"].as<bool>()) {
@@ -2704,7 +2737,7 @@ int main(int argc, char *argv[]) {
     return 0;
   }
   if (result["cache_misses"].as<bool>()) {
-    test_map_cache_misses<unsigned long, 1024>(num_inserts, num_queries, query_size, seed, trials);
+    test_map_cache_misses<unsigned long, 1024, 32, 32>(num_inserts, num_queries, query_size, seed, trials);
   }
 
   // bool correct = test_bulk_load_map<unsigned long, 1024>(n, seed, write_csv, trials);
