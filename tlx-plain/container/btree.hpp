@@ -1830,7 +1830,7 @@ public:
 
             for (unsigned short slot = 0; slot < leafnode->slotuse; ++slot)
             {
-							partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->key(slot);
+							partial_sums[sched_getcpu() * 8] += leafnode->key(slot);
             }
         }
         else

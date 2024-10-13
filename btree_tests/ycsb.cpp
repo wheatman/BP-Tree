@@ -104,7 +104,7 @@ void ycsb_load_run_string(int index_type, int wl, int kt, int ap, int num_thread
         std::vector<int> &ranges,
         std::vector<int> &ops)
 {
-    
+
 }
 
 
@@ -122,9 +122,8 @@ void* threadFunction(void* arg) {
 }
 
 
-template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
+template <typename F> inline void parallel_for(int numThreads, size_t start, size_t end, F f) {
 
-    const int numThreads = 48;
     pthread_t threads[numThreads];
     ThreadArgs threadArgs[numThreads];
     int per_thread = (end - start)/numThreads;
@@ -329,7 +328,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             {
                 // Load
                 auto starttime = get_usecs(); // std::chrono::system_clock::now();
-                parallel_for(0, LOAD_SIZE, [&](const uint64_t &i) {
+                parallel_for(num_thread, 0, LOAD_SIZE, [&](const uint64_t &i) {
                     concurrent_map.insert({init_keys[i], init_keys[i]});
                 });
                 auto end = get_usecs();
@@ -342,7 +341,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         {
             // Run
             auto starttime = std::chrono::system_clock::now();
-            parallel_for(0, RUN_SIZE, [&](const uint64_t &i) {
+            parallel_for(num_thread, 0, RUN_SIZE, [&](const uint64_t &i) {
                     if (ops[i] == OP_INSERT) {
                         // printf("insert key %lu\n", keys[i]);
                         concurrent_map.insert({keys[i], keys[i]});
