@@ -1990,7 +1990,7 @@ public:
        {
            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
 
-           partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_direct();
+           partial_sums[sched_getcpu() * 8] += leafnode->slotdata.sum_keys_direct();
        }
        else
        {
@@ -2016,7 +2016,7 @@ public:
        {
            const LeafNode* leafnode = static_cast<const LeafNode*>(n);
 
-           partial_sums[ParallelTools::getWorkerNum() * 8] += leafnode->slotdata.sum_keys_with_map();
+           partial_sums[sched_getcpu() * 8] += leafnode->slotdata.sum_keys_with_map();
        }
        else
        {

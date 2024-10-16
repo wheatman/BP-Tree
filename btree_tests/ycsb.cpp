@@ -104,7 +104,6 @@ void ycsb_load_run_string(int index_type, int wl, int kt, int ap, int num_thread
         std::vector<int> &ranges,
         std::vector<int> &ops)
 {
-    
 }
 
 
@@ -122,9 +121,7 @@ void* threadFunction(void* arg) {
 }
 
 
-template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
-
-    const int numThreads = 48;
+template <typename F> inline void parallel_for(int numThreads, size_t start, size_t end, F f) {
     pthread_t threads[numThreads];
     ThreadArgs threadArgs[numThreads];
     int per_thread = (end - start)/numThreads;
@@ -194,28 +191,30 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
     std::string init_file;
     std::string txn_file;
 
+    std::string ycsb_dir = "/home/eddy/repo/ycsb";
+
     if (ap == UNIFORM) {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
-            init_file = "../ycsb_inputs/uniform/loada_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnsa_unif_int.dat";
+            init_file = ycsb_dir + "/loada_unif_int.dat";
+            txn_file = ycsb_dir + "/txnsa_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
-            init_file = "../ycsb_inputs/uniform/loadb_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnsb_unif_int.dat";
+            init_file = ycsb_dir + "/loadb_unif_int.dat";
+            txn_file = ycsb_dir + "/txnsb_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
-            init_file = "../ycsb_inputs/uniform/loadc_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnsc_unif_int.dat";
+            init_file = ycsb_dir + "/loadc_unif_int.dat";
+            txn_file = ycsb_dir + "/txnsc_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
-            init_file = "../ycsb_inputs/uniform/loadd_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnsd_unif_int.dat";
+            init_file = ycsb_dir + "/loadd_unif_int.dat";
+            txn_file = ycsb_dir + "/txnsd_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
-            init_file = "../ycsb_inputs/uniform/loade_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnse_unif_int.dat";
+            init_file = ycsb_dir + "/loade_unif_int.dat";
+            txn_file = ycsb_dir + "/txnse_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_X) {
-            init_file = "../ycsb_inputs/uniform/loadx_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnsx_unif_int.dat";
+            init_file = ycsb_dir + "/loadx_unif_int.dat";
+            txn_file = ycsb_dir + "/txnsx_unif_int.dat";
         } else if (kt == RANDINT_KEY && wl == WORKLOAD_Y) {
-            init_file = "../ycsb_inputs/uniform/loady_unif_int.dat";
-            txn_file = "../ycsb_inputs/uniform/txnsy_unif_int.dat";
+            init_file = ycsb_dir + "/loadx_unif_int.dat";
+            txn_file = ycsb_dir + "/txnsy_unif_int.dat";
         }
     } else {
         if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
@@ -329,7 +328,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             {
                 // Load
                 auto starttime = get_usecs(); // std::chrono::system_clock::now();
-                parallel_for(0, LOAD_SIZE, [&](const uint64_t &i) {
+                parallel_for(num_thread, 0, LOAD_SIZE, [&](const uint64_t &i) {
                     concurrent_map.insert({init_keys[i], init_keys[i]});
                 });
                 auto end = get_usecs();
@@ -342,19 +341,12 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         {
             // Run
             auto starttime = std::chrono::system_clock::now();
-            parallel_for(0, RUN_SIZE, [&](const uint64_t &i) {
+            parallel_for(num_thread, 0, RUN_SIZE, [&](const uint64_t &i) {
                     if (ops[i] == OP_INSERT) {
                         // printf("insert key %lu\n", keys[i]);
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
-                        if( concurrent_map.value(keys[i]) != keys[i]) {
-#if LEAFDS
-                            // std::cout << "[BP-TREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
-#else
-                            // std::cout << "[BTREE] wrong key read: " << concurrent_map.value(keys[i]) << " expected:" << keys[i] << std::endl;
-#endif
-                            // exit(0);
-                        }
+                        concurrent_map.value(keys[i]);
                     } else if (ops[i] == OP_SCAN) {
                         uint64_t start= keys[i];
 			            uint64_t key_sum = 0, val_sum = 0;
@@ -376,8 +368,8 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
 
 #endif
 
-                        query_results_keys[i] = key_sum;
-                        query_results_vals[i] = val_sum;
+                        // query_results_keys[i] = key_sum;
+                        // query_results_vals[i] = val_sum;
                     } else if (ops[i] == OP_SCAN_END) {
 			            uint64_t key_sum = 0, val_sum = 0;
 #if LEAFDS
@@ -395,8 +387,8 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
                         //     key_sum += key;
                         //     val_sum += value;
                         // });
-                        query_results_keys[i] = key_sum;
-                        query_results_vals[i] = val_sum;
+                        // query_results_keys[i] = key_sum;
+                        // query_results_vals[i] = val_sum;
                     } else if (ops[i] == OP_UPDATE) {
                         std::cout << "NOT SUPPORTED CMD!\n";
                         exit(0);
@@ -407,13 +399,13 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             if(k!=0) run_tpts.push_back((RUN_SIZE * 1.0) / duration.count());
             printf("\tRun, throughput: %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
         }
-        uint64_t key_sum = 0;
-        uint64_t val_sum = 0;
-        for(uint64_t i = 0; i < RUN_SIZE; i++) {
-            key_sum += query_results_keys[i];
-            val_sum += query_results_vals[i];
-        }
-        printf("\ttotal key sum = %lu, total val sum = %lu\n\n", key_sum, val_sum);
+        // uint64_t key_sum = 0;
+        // uint64_t val_sum = 0;
+        // for(uint64_t i = 0; i < RUN_SIZE; i++) {
+        //     key_sum += query_results_keys[i];
+        //     val_sum += query_results_vals[i];
+        // }
+        // printf("\ttotal key sum = %lu, total val sum = %lu\n\n", key_sum, val_sum);
         }
         printf("\tMedian Load throughput: %f ,ops/us\n", findMedian(load_tpts));
         printf("\tMedian Run throughput: %f ,ops/us\n", findMedian(run_tpts));

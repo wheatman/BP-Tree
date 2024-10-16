@@ -19,7 +19,7 @@ ifeq ($(SANITIZE),1)
 CFLAGS += -fsanitize=undefined,address -fno-omit-frame-pointer
 endif
 
-LDFLAGS := -lrt -lm -lm -ldl -latomic -ljemalloc
+LDFLAGS := -lrt -lm -lm -ldl -latomic
 # -ljemalloc -ltcmalloc
 
 ifeq ($(VALGRIND),0)
@@ -37,14 +37,14 @@ CFLAGS += -DNDEBUG
 endif
 
 
-ifeq ($(INFO), 1) 
-# CFLAGS +=  -Rpass-missed="(inline|loop*)" 
-#CFLAGS += -Rpass="(inline|loop*)" -Rpass-missed="(inline|loop*)" -Rpass-analysis="(inline|loop*)" 
-CFLAGS += -Rpass=.* -Rpass-missed=.* -Rpass-analysis=.* 
+ifeq ($(INFO), 1)
+# CFLAGS +=  -Rpass-missed="(inline|loop*)"
+#CFLAGS += -Rpass="(inline|loop*)" -Rpass-missed="(inline|loop*)" -Rpass-analysis="(inline|loop*)"
+CFLAGS += -Rpass=.* -Rpass-missed=.* -Rpass-analysis=.*
 endif
 
 
-all: basic
+all: ycsb
 
 ifeq ($(LEAFDS),1)
 basic: test-leafds.cpp
