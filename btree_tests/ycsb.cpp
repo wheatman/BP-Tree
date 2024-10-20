@@ -123,8 +123,8 @@ void* threadFunction(void* arg) {
 
 
 template <typename F> inline void parallel_for(int numThreads, size_t start, size_t end, F f) {
-    pthread_t threads[numThreads];
-    ThreadArgs threadArgs[numThreads];
+    std::vector<pthread_t> threads(numThreads);
+    std::vector<ThreadArgs> threadArgs(numThreads);
     int per_thread = (end - start)/numThreads;
 
     // Create the threads and start executing the lambda function
