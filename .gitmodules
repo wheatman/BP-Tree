@@ -4,3 +4,6 @@
 [submodule "tlx-leafds/leafDS"]
 	path = tlx-leafds/container/leafDS
 	url = git@github.com:itshelenxu/leafDS.git
+[submodule "btree_tests/BwTree"]
+	path = btree_tests/BwTree
+	url = git@github.com:itshelenxu/BwTree.git

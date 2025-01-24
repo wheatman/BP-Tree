@@ -10,8 +10,9 @@
 // #include "tbb/tbb.h"
 #include <container/btree_set.hpp>
 #include <container/btree_map.hpp>
-#include <../../btree_tests/BwTree/test/test_suite.h>
-#include<cilk/cilk.h>
+#define NO_USE_PAPI
+#include "BwTree/test/test_suite.h"
+// #include<cilk/cilk.h>
 #include<thread>
 
 static long get_usecs() {
@@ -108,10 +109,53 @@ void ycsb_load_run_string(int index_type, int wl, int kt, int ap, int num_thread
     
 }
 
-template <typename F> inline void parallel_for(size_t start, size_t end, F f) {
-  cilk_for(size_t i = start; i < end; i++) f(i);
+
+struct ThreadArgs {
+	std::function<void(int, int)> func;
+	int start;
+	int end;
+};
+
+void *threadFunction(void *arg) {
+	ThreadArgs *args = static_cast<ThreadArgs *>(arg);
+	args->func(args->start, args->end);
+	pthread_exit(NULL);
 }
 
+template <typename F>
+inline void parallel_for(int numThreads, size_t start, size_t end, F f) {
+	pthread_t threads[numThreads];
+	ThreadArgs threadArgs[numThreads];
+	int per_thread = (end - start) / numThreads;
+
+	// Create the threads and start executing the lambda function
+	for (int i = 0; i < numThreads; i++) {
+		threadArgs[i].func = [&f](int arg1, int arg2) {
+			for (int k = arg1; k < arg2; k++) {
+				f(k);
+			}
+		};
+
+		threadArgs[i].start = start + (i * per_thread);
+		if (i == numThreads - 1) {
+			threadArgs[i].end = end;
+		} else {
+			threadArgs[i].end = start + ((i + 1) * per_thread);
+		}
+		int result =
+			pthread_create(&threads[i], NULL, threadFunction, &threadArgs[i]);
+
+		if (result != 0) {
+			std::cerr << "Failed to create thread " << i << std::endl;
+			exit(-1);
+		}
+	}
+
+	// Wait for the threads to finish
+	for (int i = 0; i < numThreads; i++) {
+		pthread_join(threads[i], NULL);
+	}
+}
 template <class T>
 std::vector<T> create_random_data(size_t n, size_t max_val,
                                   std::seed_seq &seed) {
@@ -269,7 +313,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
             {
                 // Load
                 auto starttime = get_usecs(); // std::chrono::system_clock::now();
-                parallel_for(0, LOAD_SIZE, [&](const uint64_t &i) {
+                parallel_for(num_thread, 0, LOAD_SIZE, [&](const uint64_t &i) {
                     concurrent_map.insert({init_keys[i], init_keys[i]});
                 });
                 auto end = get_usecs();
@@ -281,7 +325,7 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
         {
             // Run
             auto starttime = std::chrono::system_clock::now();
-            parallel_for(0, RUN_SIZE, [&](const uint64_t &i) {
+            parallel_for(num_thread, 0, RUN_SIZE, [&](const uint64_t &i) {
                     if (ops[i] == OP_INSERT) {
                         concurrent_map.insert({keys[i], keys[i]});
                     } else if (ops[i] == OP_READ) {
